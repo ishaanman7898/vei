@@ -38,6 +38,7 @@ def get_user_permissions(email):
             "product_management": user_data.get('Product Management', False) == True or str(user_data.get('Product Management', '')).upper() == 'TRUE',
             "email_sender": user_data.get('Email Management', False) == True or str(user_data.get('Email Management', '')).upper() == 'TRUE',
             "user_management": user_data.get('User/Admin Permissions', False) == True or str(user_data.get('User/Admin Permissions', '')).upper() == 'TRUE',
+            "subscription_management": user_data.get('Subscription Management', False) == True or str(user_data.get('Subscription Management', '')).upper() == 'TRUE',
         },
         "is_admin": str(user_data.get('Notes', '')).strip().upper() == 'ADMIN'
     }

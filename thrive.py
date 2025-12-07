@@ -11,6 +11,7 @@ from user_settings import show_user_settings
 from simple_auth import get_user_config
 from product_management import show_product_management
 from user_management_interface import show_user_management
+from subscription_management import show_subscription_management
 
 st.set_page_config(page_title="Thrive Tools", layout="wide", page_icon="❄️")
 
@@ -45,6 +46,8 @@ if check_permission("email_sender"):
     menu_options.append("Email Sender")
 if check_permission("product_management"):
     menu_options.append("Product Management")
+if check_permission("subscription_management"):
+    menu_options.append("Subscription Management")
 if check_permission("user_management"):
     menu_options.append("User Management")
 
@@ -92,6 +95,12 @@ elif tool == "Email Sender":
 elif tool == "Product Management":
     if check_permission("product_management"):
         show_product_management()
+    else:
+        st.error("❌ Access Denied")
+        
+elif tool == "Subscription Management":
+    if check_permission("subscription_management"):
+        show_subscription_management()
     else:
         st.error("❌ Access Denied")
         

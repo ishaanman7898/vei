@@ -64,6 +64,16 @@ def show_user_management():
                             value=perms.get('user_management', False),
                             key=f"user_{email}"
                         )
+                        
+                    # Second row of permissions
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        subscription_mgmt = st.checkbox(
+                            "📅 Subscription Management",
+                            value=perms.get('subscription_management', False),
+                            key=f"sub_{email}"
+                        )
                     
                     st.markdown("---")
                     
@@ -75,7 +85,8 @@ def show_user_management():
                                 "inventory_management": inventory,
                                 "email_sender": email_sender,
                                 "product_management": product,
-                                "user_management": user_mgmt
+                                "user_management": user_mgmt,
+                                "subscription_management": subscription_mgmt
                             }
                             if update_user_permissions(email, new_permissions):
                                 st.success("✅ Permissions updated!")
@@ -130,6 +141,12 @@ def show_user_management():
             with col2:
                 perm_prod = st.checkbox("🛍️ Product Management", value=True, key="new_prod")
                 perm_user = st.checkbox("👥 User Management", value=True, key="new_user")
+                
+            # Second row of permissions
+            col3, col4 = st.columns(2)
+            
+            with col3:
+                perm_sub = st.checkbox("📅 Subscription Management", value=True, key="new_sub")
             
             submitted = st.form_submit_button("Add User", type="primary", use_container_width=True)
             
@@ -148,7 +165,8 @@ def show_user_management():
                             "inventory_management": perm_inv,
                             "email_sender": perm_email,
                             "product_management": perm_prod,
-                            "user_management": perm_user
+                            "user_management": perm_user,
+                            "subscription_management": perm_sub
                         }
                         update_user_permissions(email, permissions)
                         

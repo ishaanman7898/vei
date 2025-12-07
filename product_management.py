@@ -5,8 +5,45 @@ import shutil
 
 def load_pwp():
     if os.path.exists("PwP.csv"):
-        return pd.read_csv("PwP.csv")
-    return pd.DataFrame(columns=["Category", "Product name", "SKU#", "Unit price", "Final Price", "Profit Margin", "Wholesale", "Store Manager", "POS", "Buy Button Links"])
+        # Read CSV with proper type specification
+        df = pd.read_csv("PwP.csv")
+        
+        # Ensure all expected columns exist
+        expected_columns = [
+            "Category", "Product name", "Product Status", "SKU#", 
+            "Unit price", "Final Price", "Profit Margin", "Wholesale", 
+            "Store Manager", "POS", "Streamlit Implementation", 
+            "Website Implementation", "Buy Button Links", "Product Descriptions"
+        ]
+        
+        # Add missing columns if any
+        for col in expected_columns:
+            if col not in df.columns:
+                df[col] = ""
+                
+        # Convert boolean columns to boolean type
+        bool_columns = [
+            "Wholesale", "Store Manager", "POS", 
+            "Streamlit Implementation", "Website Implementation"
+        ]
+        for col in bool_columns:
+            if col in df.columns:
+                # Convert string 'TRUE'/'FALSE' to boolean
+                df[col] = df[col].astype(str).str.upper() == 'TRUE'
+                
+        # Ensure Product Descriptions is treated as string
+        if "Product Descriptions" in df.columns:
+            df["Product Descriptions"] = df["Product Descriptions"].astype(str)
+            
+        return df[expected_columns]  # Return columns in consistent order
+        
+    # Return empty DataFrame with correct columns if file doesn't exist
+    return pd.DataFrame(columns=[
+        "Category", "Product name", "Product Status", "SKU#", 
+        "Unit price", "Final Price", "Profit Margin", "Wholesale", 
+        "Store Manager", "POS", "Streamlit Implementation", 
+        "Website Implementation", "Buy Button Links", "Product Descriptions"
+    ])
 
 def save_pwp(df):
     df.to_csv("PwP.csv", index=False)
@@ -26,22 +63,43 @@ def show_product_management():
         st.subheader("Current Product Catalog")
         st.info("💡 Edit cells directly below and click 'Save Changes' to update PwP.csv")
         
-        # We want to allow editing of specific columns
-        # The user mentioned: names, sku, unit number (assuming Unit price/Final Price)
+        # Create a copy of the dataframe for editing
+        editable_df = df.copy()
         
+        # Configure columns for the data editor
+        column_config = {
+            "Product name": st.column_config.TextColumn("Product Name", required=True),
+            "Product Status": st.column_config.SelectboxColumn(
+                "Status",
+                options=["In Store", "Out of Stock", "Discontinued", "Removal Requested", "Phased Out", "Product in Design"],
+                required=True
+            ),
+            "SKU#": st.column_config.TextColumn("SKU", required=True),
+            "Category": st.column_config.TextColumn("Category"),
+            "Unit price": st.column_config.TextColumn("Unit Price"),
+            "Final Price": st.column_config.TextColumn("Final Price"),
+            "Profit Margin": st.column_config.TextColumn("Profit Margin"),
+            "Wholesale": st.column_config.CheckboxColumn("Wholesale"),
+            "Store Manager": st.column_config.CheckboxColumn("Store Mgr"),
+            "POS": st.column_config.CheckboxColumn("POS"),
+            "Streamlit Implementation": st.column_config.CheckboxColumn("Streamlit"),
+            "Website Implementation": st.column_config.CheckboxColumn("Website"),
+            "Buy Button Links": st.column_config.LinkColumn("Buy Link"),
+            "Product Descriptions": st.column_config.TextColumn(
+                "Description",
+                help="Product description (supports multiple lines)",
+                max_chars=500,
+                validate="^.{0,500}$"
+            )
+        }
+        
+        # Display the data editor
         edited_df = st.data_editor(
-            df,
+            editable_df,
+            column_config=column_config,
             num_rows="dynamic",
             use_container_width=True,
-            key="product_editor",
-            column_config={
-                "Product name": st.column_config.TextColumn("Product Name", required=True),
-                "SKU#": st.column_config.TextColumn("SKU", required=True),
-                "Category": st.column_config.TextColumn("Category"),
-                "Unit price": st.column_config.TextColumn("Unit Price"),
-                "Final Price": st.column_config.TextColumn("Final Price"),
-                "Buy Button Links": st.column_config.LinkColumn("Buy Link")
-            }
+            key="product_editor"
         )
 
         if st.button("💾 Save Changes", type="primary"):
@@ -58,22 +116,45 @@ def show_product_management():
             c1, c2 = st.columns(2)
             with c1:
                 new_name = st.text_input("Product Name*", help="Required")
+                new_status = st.selectbox("Product Status*", 
+                    ["In Store", "Out of Stock", "Discontinued", "Removal Requested"], 
+                    index=0)
                 new_sku = st.text_input("SKU*", help="Required - must be unique")
-                new_category = st.selectbox("Category", options=sorted(df["Category"].unique().tolist()) + ["New Category..."])
+                new_category = st.selectbox("Category", 
+                    options=sorted(df["Category"].dropna().unique().tolist()) + ["New Category..."],
+                    index=0 if df["Category"].dropna().unique().tolist() else -1)
+                
                 if new_category == "New Category...":
                     new_category = st.text_input("Enter New Category Name")
                 
-                new_unit_price = st.text_input("Unit Price (e.g. $10.00)*", value="$0.00", help="Cost to you")
-                new_final_price = st.text_input("Final Price (e.g. $19.99)*", value="$0.00", help="Selling price")
+                new_unit_price = st.text_input("Unit Price (e.g. $10.00)*", value="$0.00", 
+                    help="Cost to you")
+                new_final_price = st.text_input("Final Price (e.g. $19.99)*", value="$0.00", 
+                    help="Selling price")
+                
+                # Product description
+                new_description = st.text_area("Product Description", 
+                    help="Detailed product description")
             
             with c2:
-                new_profit_margin = st.text_input("Profit Margin (e.g. 100.50%)", value="", help="Leave empty to auto-calculate from Unit Price and Final Price")
-                new_buy_link = st.text_input("Buy Button Link", value="", help="URL for the buy button")
+                new_profit_margin = st.text_input("Profit Margin (e.g. 100.50%)", 
+                    value="", 
+                    help="Leave empty to auto-calculate from Unit Price and Final Price")
                 
                 st.write("**Product Availability:**")
-                new_wholesale = st.checkbox("Wholesale", value=True)
-                new_store_manager = st.checkbox("Store Manager", value=True)
-                new_pos = st.checkbox("POS", value=True)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    new_wholesale = st.checkbox("Wholesale", value=True)
+                    new_streamlit = st.checkbox("Streamlit", value=True)
+                with col2:
+                    new_store_manager = st.checkbox("Store Manager", value=True)
+                    new_website = st.checkbox("Website", value=True)
+                with col3:
+                    new_pos = st.checkbox("POS", value=True)
+                
+                new_buy_link = st.text_input("Buy Button Link", 
+                    value="", 
+                    help="URL for the buy button")
                 
                 # Image Upload
                 uploaded_image = st.file_uploader("Product Image", type=['png', 'jpg', 'jpeg'])
@@ -110,18 +191,22 @@ def show_product_management():
                         if margin and not margin.endswith("%"):
                             margin = margin + "%"
                         
-                        # Create new row
-                        new_row = {
-                            "Category": new_category,
-                            "Product name": new_name,
-                            "SKU#": new_sku,
-                            "Unit price": new_unit_price,
-                            "Final Price": new_final_price,
-                            "Profit Margin": margin,
-                            "Wholesale": str(new_wholesale).upper(),
-                            "Store Manager": str(new_store_manager).upper(),
-                            "POS": str(new_pos).upper(),
-                            "Buy Button Links": new_buy_link
+                        # Add new product to dataframe
+                        new_product = {
+                            'Category': new_category,
+                            'Product name': new_name,
+                            'Product Status': new_status,
+                            'SKU#': new_sku,
+                            'Unit price': new_unit_price,
+                            'Final Price': new_final_price,
+                            'Profit Margin': margin,
+                            'Wholesale': new_wholesale,
+                            'Store Manager': new_store_manager,
+                            'POS': new_pos,
+                            'Streamlit Implementation': new_streamlit,
+                            'Website Implementation': new_website,
+                            'Buy Button Links': new_buy_link,
+                            'Product Descriptions': new_description
                         }
                         
                         # Save Image

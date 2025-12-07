@@ -20,7 +20,8 @@ def init_auth_db():
                     "inventory_management": True,
                     "email_sender": True,
                     "product_management": True,
-                    "user_management": True
+                    "user_management": True,
+                    "subscription_management": True
                 }
             }
         }
@@ -70,7 +71,8 @@ def register_user(email, password, name):
             "inventory_management": False,
             "email_sender": False,
             "product_management": False,
-            "user_management": False
+            "user_management": False,
+            "subscription_management": False
         }
     }
     # Note: Inventory config is no longer needed since using centralized credentials
