@@ -96,25 +96,46 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
         st.markdown("#### Click to Add")
         categories = {}
         for _, row in MASTER.iterrows():
-            cat = row["Category"]
-            if cat not in categories: categories[cat] = []
+            # Get values with safe defaults
+            sku = str(row.get("SKU#", "")).strip()
+            cat = str(row.get("Category", "Other")).strip()
+            name = str(row.get("Product name", "")).strip()
+            status = str(row.get("Product Status", "")).strip()
+            
+            # Skip rows with missing essential data
+            if not sku or not name or sku.lower() in ["nan", "none", ""] or name.lower() in ["nan", "none", ""]:
+                continue
+            
+            # Filter out Phased Out products - they should never be sent in emails
+            if status and status.lower() == "phased out":
+                continue
+            
+            # Use "Other" category if empty
+            if not cat or cat.lower() in ["nan", "none", ""]:
+                cat = "Other"
+            
+            if cat not in categories: 
+                categories[cat] = []
             categories[cat].append(row)
         
         sorted_cats = sorted(categories.keys())
-        cat_cols = st.columns(len(sorted_cats))
-        for col_idx, category in enumerate(sorted_cats):
-            with cat_cols[col_idx]:
-                st.markdown(f"**{category}**")
-                for row in categories[category]:
-                    sku = row["SKU#"]
-                    name = row["Product name"]
-                    price = float(row["Final Price"])
-                    count = st.session_state[cart_key].get(sku, 0)
-                    label = f"{name}\n${price:.2f}\nAdded: {count}" if count else f"{name}\n${price:.2f}"
-                    if not has_image(sku): label += "\n(NO IMAGE)"
-                    if st.button(label, key=f"add_{sku}_{key_prefix}", use_container_width=True):
-                        st.session_state[cart_key][sku] = count + 1
-                        st.rerun()
+        if not sorted_cats:
+            st.warning("No products available to add.")
+        else:
+            cat_cols = st.columns(len(sorted_cats))
+            for col_idx, category in enumerate(sorted_cats):
+                with cat_cols[col_idx]:
+                    st.markdown(f"**{category}**")
+                    for idx, row in enumerate(categories[category]):
+                        sku = row["SKU#"]
+                        name = row["Product name"]
+                        price = float(row.get("Final Price", 0))
+                        count = st.session_state[cart_key].get(sku, 0)
+                        label = f"{name}\n${price:.2f}\nAdded: {count}" if count else f"{name}\n${price:.2f}"
+                        if not has_image(sku): label += "\n(NO IMAGE)"
+                        if st.button(label, key=f"add_{sku}_{key_prefix}_{col_idx}_{idx}_{count}", use_container_width=True):
+                            st.session_state[cart_key][sku] = count + 1
+                            st.rerun()
         
         if st.session_state[cart_key]:
             st.markdown("### Current Cart")
@@ -163,7 +184,7 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                         "subtract_inventory": subtract_inv,
                         "target_sheet": target_sheet
                     })
-                    st.success("✅ Added to queue!")
+                    st.success("✅ Order added to queue!")
                     if missing: st.warning(f"Missing images: {', '.join(missing)}")
                     st.session_state[cart_key] = {}
                     st.rerun()
@@ -179,6 +200,9 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
             })
         
         edited_df = st.data_editor(st.session_state[med_key], num_rows="dynamic", use_container_width=True, key=f"medium_entry_editor_{key_prefix}")
+        # Update session state with edited dataframe
+        st.session_state[med_key] = edited_df
+        
         st.markdown("---")
         target_sheet = None
         if allow_inventory_subtraction:
@@ -223,7 +247,15 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                             for full, s in name_to_sku.items():
                                 if clean.lower() in full.lower() or full.lower() in clean.lower():
                                     sku = s; break
-                            if sku: cart[sku] = cart.get(sku, 0) + qty
+                            # Validate product is not phased out before adding to cart
+                            if sku:
+                                # Check product status in MASTER
+                                product_row = MASTER[MASTER["SKU#"] == sku]
+                                if not product_row.empty:
+                                    status = str(product_row.iloc[0].get("Product Status", "")).strip()
+                                    if status and status.lower() == "phased out":
+                                        continue  # Skip phased out products
+                                cart[sku] = cart.get(sku, 0) + qty
                     
                     if cart:
                         st.session_state.orders.append({
@@ -235,7 +267,7 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                         })
                         added += 1
                 if added:
-                    st.success(f"✅ Added {added} orders!")
+                    st.success(f"✅ Added {added} orders to queue!")
                     st.rerun()
 
     # --- LARGE ENTRY ---
@@ -287,7 +319,14 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                     for full, s in name_to_sku.items():
                         if clean.lower() in full.lower() or full.lower() in clean.lower():
                             sku = s; break
+                    # Validate product is not phased out before adding to cart
                     if sku:
+                        # Check product status in MASTER
+                        product_row = MASTER[MASTER["SKU#"] == sku]
+                        if not product_row.empty:
+                            status = str(product_row.iloc[0].get("Product Status", "")).strip()
+                            if status and status.lower() == "phased out":
+                                continue  # Skip phased out products
                         q_match = re.search(r'[x×]\s*(\d+)$', line, re.IGNORECASE)
                         qty = int(q_match.group(1)) if q_match else 1
                         cart[sku] = cart.get(sku, 0) + qty
@@ -305,14 +344,17 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                         "target_sheet": target_sheet
                     })
                     added += 1
-            st.success(f"Imported {added} valid orders!")
+            if added > 0:
+                st.success(f"✅ Imported {added} valid orders to queue!")
+            else:
+                st.warning("No valid orders found in CSV.")
             st.rerun()
 
 
 def show_email_sender(MASTER, sku_to_name, name_to_sku, sku_to_price, sku_to_category, email_config=None, inv_config=None):
     """Main email sender interface"""
     st.title("Email Sender")
-    st.caption("Send automated emails and order confirmations.")
+    st.caption("Send automated fulfillment emails.")
     
     if not email_config:
         st.error("❌ Email credentials not configured. Please go to 'My Settings' to set them up.")
@@ -343,20 +385,10 @@ def show_email_sender(MASTER, sku_to_name, name_to_sku, sku_to_price, sku_to_cat
     
     if "orders" not in st.session_state: st.session_state.orders = []
     
-    # Main tabs: Automated Email Sender and Order Confirmation
-    main_tab1, main_tab2 = st.tabs(["Automated Email Sender", "Automated Order Confirmation"])
-    
     # ====================== AUTOMATED EMAIL SENDER ======================
-    with main_tab1:
-        st.subheader("Automated Email Sender")
-        st.caption("**How to use:** Choose an entry method below based on how many orders you need to process.")
-        render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config, "tab1")
-        
-    # ====================== CONFIRMATION SENDER ======================
-    with main_tab2:
-        st.subheader("Automated Order Confirmation Sender")
-        st.caption("This tool uses the same email credentials and queue as the Automated Email Sender.")
-        render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config, "tab2", allow_inventory_subtraction=False)
+    st.subheader("Automated Email Sender")
+    st.caption("**How to use:** Choose an entry method below based on how many orders you need to process.")
+    render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config, "tab1")
 
     # ====================== QUEUE & SEND ======================
     if st.session_state.orders:
@@ -385,7 +417,27 @@ def show_email_sender(MASTER, sku_to_name, name_to_sku, sku_to_price, sku_to_cat
             sent = 0
             
             for idx, order in enumerate(st.session_state.orders):
-                cart = order["Cart"]
+                cart = order["Cart"].copy()  # Work with a copy
+                
+                # Final safety check: Remove any phased out products before sending
+                phased_out_removed = []
+                for sku in list(cart.keys()):
+                    product_row = MASTER[MASTER["SKU#"] == sku]
+                    if not product_row.empty:
+                        status = str(product_row.iloc[0].get("Product Status", "")).strip()
+                        if status and status.lower() == "phased out":
+                            phased_out_removed.append(sku_to_name.get(sku, sku))
+                            del cart[sku]
+                
+                # Skip this order if all products were phased out
+                if not cart:
+                    st.warning(f"Skipped order #{order['Order_Number']} - all products are phased out")
+                    continue
+                
+                # Show warning if some products were removed
+                if phased_out_removed:
+                    st.warning(f"Removed phased out products from order #{order['Order_Number']}: {', '.join(phased_out_removed)}")
+                
                 total = order.get("Order_Total", sum(sku_to_price.get(s, 0) * q for s, q in cart.items()))
                 items_html = ""
                 all_skus = []
@@ -525,8 +577,11 @@ def show_email_sender(MASTER, sku_to_name, name_to_sku, sku_to_price, sku_to_cat
                 time.sleep(1)
             
             server.quit()
-            st.balloons()
-            st.success(f"✅ SUCCESS! Sent {sent}/{len(st.session_state.orders)} emails!")
+            
+            # Show notification at top of page
+            st.success(f"✅ **All emails sent successfully!** {sent}/{len(st.session_state.orders)} emails delivered.")
+            st.info(f"📧 Email batch completed. All {sent} order{'s' if sent != 1 else ''} have been processed and sent.")
+            
             st.session_state.orders = []
             time.sleep(2)
             st.rerun()

@@ -11,7 +11,7 @@ from user_settings import show_user_settings
 from simple_auth import get_user_config
 from product_management import show_product_management
 from user_management_interface import show_user_management
-from subscription_management import show_subscription_management
+
 
 st.set_page_config(page_title="Thrive Tools", layout="wide", page_icon="❄️")
 
@@ -21,7 +21,10 @@ if not check_authentication():
 
 # Get current user
 current_user = get_current_user()
-user_email = current_user['email']
+if not current_user:
+    st.error("Unable to load user information. Please log in again.")
+    st.stop()
+user_email = current_user.get('email', '')
 
 # Load master product data
 @st.cache_data
@@ -46,8 +49,7 @@ if check_permission("email_sender"):
     menu_options.append("Email Sender")
 if check_permission("product_management"):
     menu_options.append("Product Management")
-if check_permission("subscription_management"):
-    menu_options.append("Subscription Management")
+
 if check_permission("user_management"):
     menu_options.append("User Management")
 
@@ -63,6 +65,19 @@ tool = st.sidebar.radio("Choose Tool", menu_options, label_visibility="collapsed
 # Single logout button for entire app
 st.sidebar.markdown("---")
 if st.sidebar.button("🔓 Logout", key="main_logout", use_container_width=True):
+    # Clear session file
+    import os
+    import hashlib
+    current_user = st.session_state.get('current_user')
+    if current_user and current_user.get('email'):
+        email_hash = hashlib.md5(current_user['email'].encode()).hexdigest()
+        session_file = f"credentials/sessions/{email_hash}.json"
+        if os.path.exists(session_file):
+            try:
+                os.remove(session_file)
+            except:
+                pass
+    
     st.session_state.authenticated = False
     st.session_state.current_user = None
     # Clear all session state
@@ -98,11 +113,7 @@ elif tool == "Product Management":
     else:
         st.error("❌ Access Denied")
         
-elif tool == "Subscription Management":
-    if check_permission("subscription_management"):
-        show_subscription_management()
-    else:
-        st.error("❌ Access Denied")
+
         
 elif tool == "User Management":
     if check_permission("user_management"):

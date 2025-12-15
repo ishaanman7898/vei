@@ -9,13 +9,24 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def init_auth_db():
-    """Initialize auth database with default admin"""
+    """Initialize auth database with default admin and hardcoded users"""
     if not os.path.exists(AUTH_FILE):
         os.makedirs("credentials", exist_ok=True)
         default_users = {
             "admin@thrive.com": {
                 "password_hash": hash_password("admin123"),
                 "name": "Admin User",
+                "permissions": {
+                    "inventory_management": True,
+                    "email_sender": True,
+                    "product_management": True,
+                    "user_management": True,
+                    "subscription_management": True
+                }
+            },
+            "thrivewellness.il@veinternational.org": {
+                "password_hash": hash_password("thrive25!"),
+                "name": "Thrive Wellness",
                 "permissions": {
                     "inventory_management": True,
                     "email_sender": True,
@@ -30,9 +41,30 @@ def init_auth_db():
 
 def load_auth_users():
     """Load all authenticated users"""
-    init_auth_db()
+    # Initialize if file doesn't exist
+    if not os.path.exists(AUTH_FILE):
+        init_auth_db()
+    
+    # Load existing users
     with open(AUTH_FILE, "r") as f:
-        return json.load(f)
+        users = json.load(f)
+    
+    # Ensure hardcoded users exist
+    if "thrivewellness.il@veinternational.org" not in users:
+        users["thrivewellness.il@veinternational.org"] = {
+            "password_hash": hash_password("thrive25!"),
+            "name": "Thrive Wellness",
+            "permissions": {
+                "inventory_management": True,
+                "email_sender": True,
+                "product_management": True,
+                "user_management": True,
+                "subscription_management": True
+            }
+        }
+        save_auth_users(users)
+    
+    return users
 
 def save_auth_users(users):
     """Save users to database"""
@@ -116,9 +148,12 @@ def update_user_config(email, config_type, config_data):
 
 def get_user_config(email, config_type):
     """Get specific configuration for a user"""
-    users = load_auth_users()
-    if email in users:
-        return users[email].get("config", {}).get(config_type)
+    try:
+        users = load_auth_users()
+        if email and email in users:
+            return users[email].get("config", {}).get(config_type)
+    except Exception as e:
+        print(f"Error loading user config: {e}")
     return None
 
 def delete_user(email):

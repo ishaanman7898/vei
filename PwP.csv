@@ -1,48 +1,48 @@
-Category,Product name,Product Status,SKU#,Unit price,Final Price,Profit Margin,Wholesale,Store Manager,POS,Streamlit Implmentation,Website Implementation,Buy Button Links
-Accessories,Divider,Removal Pending,O-DI,$2.00,$8.99,349.50%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/divider-odi/
-Accessories,Ice Molds,Removal Pending,O-IM,$10.00,$19.99,99.90%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/ice-molds-oim/
-Accessories,Shaker Ball,In Store,O-SB,$1.50,$7.99,432.67%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/shaker-ball-osb/
-Accessories,The Anchor (Snack Compartment),In Store,O-AN,$3.65,$12.99,255.89%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/the-anchor-snack-compartment-oan/
-Electrolytes,Surge IV (Blue Razzberry),In Store,SU-EL-1,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-blue-razzberry-suel1/
-Electrolytes,Surge IV (Fruit Punch),In Store,SU-EL-2,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-fruit-punch-suel2/
-Electrolytes,Surge IV (Lemonade),In Store,SU-EL-3,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-lemonade-suel3/
-Electrolytes,Surge IV (Pina Colada),In Store,SU-EL-4,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-pina-colada-suel4/
-Electrolytes,Surge IV (Strawberry),In Store,SU-EL-5,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-strawberry-suel5/
-Electrolytes,Surge IV (Tropical Vibes),In Store,SU-EL-6,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-tropical-punch-suel6/
-Electrolytes,Surge IV (Cucumber Lime),In Store,SU-EL-7,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-cucumber-lime-suel7/
-Electrolytes,Surge IV (Apple Cider),In Store,SU-EL-8,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-apple-cider-suel8/
-Electrolytes,Surge IV (Assorted),In Store,SU-EL-9,$3.15,$21.99,598.10%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-assorted-suel9/
-Electrolytes,Surge IV (Cranberry),In Store,SU-EL-10,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-cranberry-suel10/
-Lids,The Snow Cap (Modified Lid),Removal Pending,CA-SC,$5.99,$14.99,150.25%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/the-snow-cap-modified-lid-casc/
-Supplements,Peak Powder (Chocolate),In Store,SU-PR-1,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-powder-chocolate-supr1/
-Supplements,Peak Powder (Vanilla),In Store,SU-PR-2,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-powder-vanilla-supr2/
-Water Bottle,The Glacier (Black) w. Ice Cap,In Store,BO-41,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-black-w-ice-cap-bo41/
-Water Bottle,The Glacier (Brown) w. Ice Cap,In Store,BO-42,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-brown-w-ice-cap-bo42/
-Water Bottle,The Glacier (Frost Blue) w. Ice Cap,In Store,BO-43,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-frost-blue-w-ice-cap-bo43/
-Water Bottle,The Glacier (Maroon) w. Ice Cap,In Store,BO-44,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-maroon-w-ice-cap-bo44/
-Water Bottle,The Glacier (Orange) w. Ice Cap,In Store,BO-45,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-orange-w-ice-cap-bo45/
-Water Bottle,The Glacier (White) w. Ice Cap,In Store,BO-46,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-white-w-ice-cap-bo46/
-Water Bottle,The Glacier (Santa Sleigh) w. Ice Cap,In Store,BO-47,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-santa-sleigh-w-ice-cap-bo47/
-Water Bottle,The Glacier (Rudolph Red) w. Ice Cap,In Store,BO-48,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-rudolph-red-w-ice-cap-bo48/
-Water Bottle,The Glacier (Iced Cookie) w. Ice Cap,In Store,BO-49,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-iced-cookie-w-ice-cap-bo49/
-Water Bottle,The Glacier (Christmas Tree) w. Ice Cap,In Store,BO-50,$12.00,$75.00,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-christmas-tree-w-ice-cap-bo50/
-Water Bottle,The Iceberg (Black) w. Ice Cap,In Store,BO-31,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-black-w-ice-cap-bo31/
-Water Bottle,The Iceberg (Brown) w. Ice Cap,In Store,BO-32,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-brown-w-ice-cap-bo32/
-Water Bottle,The Iceberg (Frost Blue) w. Ice Cap,In Store,BO-33,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-frost-blue-w-ice-cap-bo33/
-Water Bottle,The Iceberg (Maroon) w. Ice Cap,In Store,BO-34,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-maroon-w-ice-cap-bo34/
-Water Bottle,The Iceberg (Orange) w. Ice Cap,In Store,BO-35,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-orange-w-ice-cap-bo35/
-Water Bottle,The Iceberg (White) w. Ice Cap,In Store,BO-36,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-white-w-ice-cap-bo36/
-Water Bottle,The Iceberg (Christmas Tree) w. Ice Cap,In Store,BO-37,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-christmas-tree-w-ice-cap-bo37/
-Water Bottle,The Iceberg (Iced Cookie) w. Ice Cap,In Store,BO-38,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-iced-cookie-w-ice-cap-bo38/
-Water Bottle,The Iceberg (Rudolph Red) w. Ice Cap,In Store,BO-39,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-rudolph-red-w-ice-cap-bo39/
-Water Bottle,The Iceberg (Santa's Sleigh) w. Ice Cap,In Store,BO-40,$8.00,$60.00,650.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-santas-sleigh-w-ice-cap-bo40/
-Water Bottle,The Glacier (40 oz Bottle) w. Ice Cap,Phased Out,BO-48,$12.00,$64.99,441.58%,FALSE,FALSE,FALSE,FALSE,FALSE,N/A
-Water Bottle,The Iceberg (32 oz Bottle) w. Ice Cap,Phased Out,BO-38,$8.00,$49.99,524.88%,FALSE,FALSE,FALSE,FALSE,FALSE,N/A
-Bundle,Alo x Thrive Bundle,In Store,SE-F-1,$184.00,$499.99,171.73%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/alo-x-thrive-bundle-sef1/
-Bundle,Peleton x Thrive Bundle,In Store,SE-F-2,"$1,395.00","$2,999.99",115.05%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/peloton-x-thrive-bundle-sef2/
-Bundle,Fall Bundle,In Store,SE-F-3,$54.64,$399.99,632.05%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/fall-bundle-sef3/
-Seasonal,Peak Protein (Pumpkin Spice),In Store,SU-PR-3,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-protein-pumpkin-spice-supr3/
-Seasonal,Peak Protein (Gingerbread),In Store,SU-PR-4,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-protein-gingerbread-supr4/
-Seasonal,Peak Protein (Marshmallow),In Store,SU-PR-5,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-protein-marshmallow-supr5/
-Subscriptions,Electrolytes - Single Flavor - One year Supply,In Store,SS-E-1,$75.60,$219.99,190.99%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/electrolytes-single-flavor-one-year-supply-sse1/
-Subscriptions,Electrolytes - Assorted Flavor - One year Supply,In Store,SS-E-2,$75.60,$219.99,190.99%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/electrolytes-assorted-flavor-one-year-supply-sse2/
+Category,Product name,Product Status,SKU#,Unit price,Final Price,Profit Margin,Wholesale,Store Manager,POS,Streamlit Implmentation,Website Implementation,Buy Button Links,Product Descriptions
+Accessories,Divider,Removal Pending,O-DI,$2.00,$8.99,349.50%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/divider-odi/,
+Accessories,Ice Molds,Removal Pending,O-IM,$10.00,$19.99,99.90%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/ice-molds-oim/,
+Accessories,Shaker Ball,Removal Pending,O-SB,$1.50,$7.99,432.67%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/shaker-ball-osb/,
+Accessories,The Anchor (Snack Compartment),Removal Pending,O-AN,$3.65,$12.99,255.89%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/the-anchor-snack-compartment-oan/,
+Lids,The Snow Cap (Modified Lid),Removal Pending,CA-SC,$5.99,$14.99,150.25%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/the-snow-cap-modified-lid-casc/,
+Electrolytes,Surge IV (Blue Razzberry),Removal Requested,SU-EL-1,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-blue-razzberry-suel1/,
+Electrolytes,Surge IV (Fruit Punch),In Store,SU-EL-2,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-fruit-punch-suel2/,
+Electrolytes,Surge IV (Lemonade),Removal Requested,SU-EL-3,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-lemonade-suel3/,
+Electrolytes,Surge IV (Pina Colada),Removal Requested,SU-EL-4,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-pina-colada-suel4/,
+Electrolytes,Surge IV (Strawberry),In Store,SU-EL-5,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-strawberry-suel5/,
+Electrolytes,Surge IV (Tropical Vibes),Removal Requested,SU-EL-6,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-tropical-punch-suel6/,
+Electrolytes,Surge IV (Cucumber Lime),Removal Requested,SU-EL-7,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-cucumber-lime-suel7/,
+Electrolytes,Surge IV (Apple Cider),Removal Requested,SU-EL-8,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-apple-cider-suel8/,
+Electrolytes,Surge IV (Assorted),Removal Requested,SU-EL-9,$3.15,$21.99,598.10%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-assorted-suel9/,
+Electrolytes,Surge IV (Cranberry),Removal Requested,SU-EL-10,$3.15,$19.99,534.60%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/surge-iv-cranberry-suel10/,
+Electrolytes,Electrolytes - Single Flavor - One year Supply,In Store,SS-E-1,$75.60,$219.99,190.99%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/electrolytes-single-flavor-one-year-supply-sse1/,
+Electrolytes,Electrolytes - Assorted Flavor - One year Supply,In Store,SS-E-2,$75.60,$219.99,190.99%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/electrolytes-assorted-flavor-one-year-supply-sse2/,
+Supplements,Peak Powder (Chocolate),In Store,SU-PR-1,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-powder-chocolate-supr1/,
+Supplements,Peak Powder (Vanilla),In Store,SU-PR-2,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-powder-vanilla-supr2/,
+Water Bottle,The Glacier (Black) w. Ice Cap,In Store,BO-41,$12.00,$99.99,733.25%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-black-w-ice-cap-bo41/,
+Water Bottle,The Glacier (Brown) w. Ice Cap,In Store,BO-42,$12.00,$99.99,733.25%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-brown-w-ice-cap-bo42/,
+Water Bottle,The Glacier (Frost Blue) w. Ice Cap,In Store,BO-43,$12.00,$99.99,733.25%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-frost-blue-w-ice-cap-bo43/,
+Water Bottle,The Glacier (Maroon) w. Ice Cap,In Store,BO-44,$12.00,$99.99,733.25%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-maroon-w-ice-cap-bo44/,
+Water Bottle,The Glacier (Orange) w. Ice Cap,In Store,BO-45,$12.00,$99.99,733.25%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-orange-w-ice-cap-bo45/,
+Water Bottle,The Glacier (White) w. Ice Cap,In Store,BO-46,$12.00,$99.99,733.25%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-white-w-ice-cap-bo46/,
+Water Bottle,The Glacier (Santa Sleigh) w. Ice Cap,In Store,BO-47,$12.00,$99.99,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-santa-sleigh-w-ice-cap-bo47/,
+Water Bottle,The Glacier (Rudolph Red) w. Ice Cap,In Store,BO-48,$12.00,$99.99,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-rudolph-red-w-ice-cap-bo48/,
+Water Bottle,The Glacier (Iced Cookie) w. Ice Cap,In Store,BO-49,$12.00,$99.99,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-iced-cookie-w-ice-cap-bo49/,
+Water Bottle,The Glacier (Christmas Tree) w. Ice Cap,In Store,BO-50,$12.00,$99.99,525.00%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-glacier-christmas-tree-w-ice-cap-bo50/,
+Water Bottle,The Iceberg (Black) w. Ice Cap,In Store,BO-31,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-black-w-ice-cap-bo31/,
+Water Bottle,The Iceberg (Brown) w. Ice Cap,In Store,BO-32,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-brown-w-ice-cap-bo32/,
+Water Bottle,The Iceberg (Frost Blue) w. Ice Cap,In Store,BO-33,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-frost-blue-w-ice-cap-bo33/,
+Water Bottle,The Iceberg (Maroon) w. Ice Cap,In Store,BO-34,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-maroon-w-ice-cap-bo34/,
+Water Bottle,The Iceberg (Orange) w. Ice Cap,In Store,BO-35,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-orange-w-ice-cap-bo35/,
+Water Bottle,The Iceberg (White) w. Ice Cap,In Store,BO-36,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-white-w-ice-cap-bo36/,
+Water Bottle,The Iceberg (Christmas Tree) w. Ice Cap,In Store,BO-37,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-christmas-tree-w-ice-cap-bo37/,
+Water Bottle,The Iceberg (Iced Cookie) w. Ice Cap,In Store,BO-38,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-iced-cookie-w-ice-cap-bo38/,
+Water Bottle,The Iceberg (Rudolph Red) w. Ice Cap,In Store,BO-39,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-rudolph-red-w-ice-cap-bo39/,
+Water Bottle,The Iceberg (Santa's Sleigh) w. Ice Cap,In Store,BO-40,$8.00,$69.99,774.88%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/the-iceberg-santas-sleigh-w-ice-cap-bo40/,
+Water Bottle,The Glacier (40 oz Bottle) w. Ice Cap,Phased Out,BO-48,$12.00,$64.99,441.58%,FALSE,FALSE,FALSE,FALSE,FALSE,N/A,
+Water Bottle,The Iceberg (32 oz Bottle) w. Ice Cap,Phased Out,BO-38,$8.00,$49.99,524.88%,FALSE,FALSE,FALSE,FALSE,FALSE,N/A,
+Bundle,Alo x Thrive Bundle,In Store,SE-F-1,$184.00,$499.99,171.73%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/alo-x-thrive-bundle-sef1/,
+Bundle,Peleton x Thrive Bundle,In Store,SE-F-2,"$1,395.00","$2,999.99",115.05%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/peloton-x-thrive-bundle-sef2/,
+Bundle,Fall Bundle,In Store,SE-F-3,$54.64,$399.99,632.05%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/fall-bundle-sef3/,
+Seasonal,Peak Protein (Pumpkin Spice),Removal Requested,SU-PR-3,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,TRUE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-protein-pumpkin-spice-supr3/,
+Seasonal,Peak Protein (Gingerbread),In Store,SU-PR-4,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-protein-gingerbread-supr4/,
+Seasonal,Peak Protein (Marshmallow),In Store,SU-PR-5,$15.99,$34.99,118.82%,TRUE,TRUE,TRUE,TRUE,FALSE,https://portal.veinternational.org/buybuttons/us019814/btn/peak-protein-marshmallow-supr5/,

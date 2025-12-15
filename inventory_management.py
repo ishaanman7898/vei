@@ -9,12 +9,103 @@ from simple_auth import update_user_config
 
 
 def load_master():
-    """Load PwP.csv master product list"""
+    """Load PwP.csv master product list with adaptive column mapping"""
     if not os.path.exists("PwP.csv"):
         st.error("PwP.csv is missing!")
         st.stop()
     df = pd.read_csv("PwP.csv")
-    df["Product name"] = df["Product name"].str.strip()
+    
+    # Adaptive column name mapping - handle various column name variations
+    column_mapping = {}
+    
+    # Map Category column (handle variations like "glaic", "category", etc.)
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if col_lower in ["category", "glaic", "cat", "categories"]:
+            column_mapping[col] = "Category"
+            break
+    
+    # Map Product name column
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if col_lower in ["product name", "productname", "product", "name", "product_name"]:
+            column_mapping[col] = "Product name"
+            break
+    
+    # Map SKU column
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if col_lower in ["sku#", "sku", "skus", "sku_number", "product sku"]:
+            column_mapping[col] = "SKU#"
+            break
+    
+    # Map Final Price column
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if col_lower in ["final price", "finalprice", "price", "final_price", "final"]:
+            column_mapping[col] = "Final Price"
+            break
+    
+    # Map Product Status column
+    for col in df.columns:
+        col_lower = str(col).lower().strip()
+        if col_lower in ["product status", "productstatus", "status", "product_status", "prod status"]:
+            column_mapping[col] = "Product Status"
+            break
+    
+    # Apply column mapping
+    if column_mapping:
+        df = df.rename(columns=column_mapping)
+    
+    # Ensure required columns exist, create if missing
+    if "Product name" not in df.columns:
+        # Try to find it by position (usually 2nd column)
+        if len(df.columns) > 1:
+            df = df.rename(columns={df.columns[1]: "Product name"})
+        else:
+            st.error("PwP.csv is missing 'Product name' column!")
+            st.stop()
+    
+    if "Category" not in df.columns:
+        # Try to find it by position (usually 1st column)
+        if len(df.columns) > 0:
+            df = df.rename(columns={df.columns[0]: "Category"})
+        else:
+            df["Category"] = "Other"
+    
+    if "SKU#" not in df.columns:
+        # Try to find it by common patterns
+        for col in df.columns:
+            if "sku" in str(col).lower():
+                df = df.rename(columns={col: "SKU#"})
+                break
+        if "SKU#" not in df.columns:
+            st.error("PwP.csv is missing 'SKU#' column!")
+            st.stop()
+    
+    if "Final Price" not in df.columns:
+        # Try to find price column
+        for col in df.columns:
+            if "price" in str(col).lower() and "final" in str(col).lower():
+                df = df.rename(columns={col: "Final Price"})
+                break
+        if "Final Price" not in df.columns:
+            df["Final Price"] = 0.0
+    
+    if "Product Status" not in df.columns:
+        # Try to find status column
+        for col in df.columns:
+            if "status" in str(col).lower() and "product" in str(col).lower():
+                df = df.rename(columns={col: "Product Status"})
+                break
+        if "Product Status" not in df.columns:
+            df["Product Status"] = ""
+    
+    # Clean and normalize data
+    df["Product name"] = df["Product name"].astype(str).str.strip()
+    df["Category"] = df["Category"].astype(str).str.strip()
+    df["SKU#"] = df["SKU#"].astype(str).str.strip()
+    
     # Normalize product names (add space before x)
     df["Product name"] = df["Product name"].apply(
         lambda x: re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', str(x)) if pd.notna(x) else x
@@ -22,10 +113,24 @@ def load_master():
     df["Product name"] = df["Product name"].apply(
         lambda x: re.sub(r'(\w)x([A-Z])', r'\1 x \2', str(x)) if pd.notna(x) else x
     )
+    
+    # Clean price
     def clean_price(x):
-        if isinstance(x, str): x = x.replace("$", "").replace(",", "").strip()
-        return float(x or 0)
+        if pd.isna(x) or x == "" or str(x).lower() in ["nan", "none", ""]:
+            return 0.0
+        if isinstance(x, str): 
+            x = x.replace("$", "").replace(",", "").strip()
+        try:
+            return float(x or 0)
+        except:
+            return 0.0
+    
     df["Final Price"] = df["Final Price"].apply(clean_price)
+    
+    # Remove rows with empty/invalid SKUs
+    df = df[df["SKU#"].notna() & (df["SKU#"].str.strip() != "")]
+    df = df[df["Product name"].notna() & (df["Product name"].str.strip() != "")]
+    
     return df
 
 def load_phased_products():
