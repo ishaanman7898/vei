@@ -7,15 +7,16 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from auth import get_current_user
-from simple_auth import get_user_config
+from user_config import get_user_config
 from email.mime.image import MIMEImage
+from supabase_client import get_authed_supabase
 
 SUBSCRIPTIONS_FILE = "subscriptions.csv"
 
 def get_image_path(sku):
     """Get the path to a product image if it exists"""
     for ext in ['.jpg', '.jpeg', '.png', '.JPG', '.PNG']:
-        path = f"product_images/{sku}{ext}"
+        path = f"product-images/{sku}{ext}"
         if os.path.exists(path):
             return path, ext
     return None, None
@@ -39,40 +40,67 @@ def save_subscriptions(df):
     df.to_csv(SUBSCRIPTIONS_FILE, index=False)
 
 def get_subscription_products():
-    """Get list of subscription products from PwP.csv, cleaned of blanks/NaNs"""
-    if os.path.exists("PwP.csv"):
-        df = pd.read_csv("PwP.csv")
-        subscription_products = df[df['Category'].str.contains('Subscription', case=False, na=False)]
-        valid_tuples = []
-        for _, row in subscription_products.iterrows():
-            name = row.get('Product name', '')
-            sku = row.get('SKU#', '')
-            if pd.notnull(name) and pd.notnull(sku):
-                name = str(name).strip()
-                sku = str(sku).strip()
-                if name and sku:
-                    valid_tuples.append((name, sku))
-        return valid_tuples
-    return []
+    """Get list of subscription products from Supabase products, cleaned of blanks/NaNs"""
+    try:
+        supabase = get_authed_supabase()
+        res = supabase.table("products").select("name,sku,category").ilike("category", "%subscription%").execute()
+        rows = getattr(res, "data", None) or []
+    except Exception:
+        rows = []
+
+    if not rows:
+        return []
+
+    df = pd.DataFrame(rows)
+    valid_tuples = []
+    for _, row in df.iterrows():
+        name = row.get('name', '')
+        sku = row.get('sku', '')
+        if pd.notnull(name) and pd.notnull(sku):
+            name = str(name).strip()
+            sku = str(sku).strip()
+            if name and sku:
+                valid_tuples.append((name, sku))
+    return valid_tuples
 
 def send_subscription_email(email_config, recipient_email, customer_name, product_name, subscription_type, next_billing_date, product_sku="", notes=""):
     """Send a subscription email"""
     try:
-        # Get email configuration
-        sender_email = email_config.get("email")
-        password_encrypted = email_config.get("password_encrypted")
-        
-        if password_encrypted:
-            # Decrypt the password
-            from cryptography.fernet import Fernet
-            key_file = "credentials/encryption.key"
-            with open(key_file, 'rb') as f:
-                key = f.read()
-            f = Fernet(key)
-            app_password = f.decrypt(password_encrypted.encode()).decode()
-        else:
-            app_password = email_config.get("password")
-        
+        # Global override (recommended): Streamlit secrets / env vars
+        try:
+            sender_email = st.secrets.get("SMTP_SENDER_EMAIL")
+            app_password = st.secrets.get("SMTP_APP_PASSWORD")
+        except Exception:
+            sender_email = None
+            app_password = None
+
+        sender_email = sender_email or os.getenv("SMTP_SENDER_EMAIL")
+        app_password = app_password or os.getenv("SMTP_APP_PASSWORD")
+
+        if app_password:
+            import re
+            app_password = re.sub(r"\s+", "", str(app_password))
+
+        # Fallback: user config from My Settings
+        if (not sender_email or not app_password) and email_config:
+            sender_email = sender_email or email_config.get("email")
+            password_encrypted = email_config.get("password_encrypted")
+
+            if password_encrypted:
+                from cryptography.fernet import Fernet
+
+                key_file = "credentials/encryption.key"
+                with open(key_file, 'rb') as f:
+                    key = f.read()
+                f = Fernet(key)
+                app_password = app_password or f.decrypt(password_encrypted.encode()).decode()
+            else:
+                app_password = app_password or email_config.get("password")
+
+        if app_password:
+            import re
+            app_password = re.sub(r"\s+", "", str(app_password))
+
         if not sender_email or not app_password:
             return False, "Email not configured"
         
@@ -170,7 +198,7 @@ def show_subscription_management():
     email_config = get_user_config(user_email, "email")
     
     # Load data
-    subscriptions = load_subscription_management()
+    subscriptions = load_subscriptions()
     subscription_products = get_subscription_products()
     
     # Tabs for different views
@@ -199,7 +227,7 @@ def show_subscription_management():
                         )
                         product_name, product_sku = selected_product
                     else:
-                        st.warning("No valid subscription products found in PwP.csv. Please check the file for missing or invalid names/SKUs.")
+                        st.warning("No valid subscription products found in Supabase products.")
                         product_name = ""
                         product_sku = ""
                     
@@ -407,7 +435,7 @@ def show_subscription_management():
             for name, sku in subscription_products:
                 st.write(f"- {name} (SKU: {sku})")
         else:
-            st.warning("No subscription products found in PwP.csv. Add products with 'Subscription' in their category.")
+            st.warning("No subscription products found in Supabase products. Add products with 'Subscription' in their category.")
     
     with tab3:
         st.subheader("Test Subscription Email")
@@ -429,7 +457,7 @@ def show_subscription_management():
                     test_product = st.selectbox("Product", product_options, format_func=label_fn)
                     test_product_name, test_product_sku = test_product
                 else:
-                    st.warning("No valid subscription products found in PwP.csv")
+                    st.warning("No valid subscription products found in Supabase products")
                     test_product_name = ""
                     test_product_sku = ""
                 

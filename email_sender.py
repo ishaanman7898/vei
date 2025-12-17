@@ -9,10 +9,11 @@ import io
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
+from supabase_client import get_authed_supabase
 
 def get_image_path(sku):
     for ext in ['.jpg', '.jpeg', '.png', '.JPG', '.PNG']:
-        path = f"product_images/{sku}{ext}"
+        path = f"product-images/{sku}{ext}"
         if os.path.exists(path):
             return path, ext
     return None, None
@@ -20,61 +21,101 @@ def get_image_path(sku):
 def has_image(sku):
     return get_image_path(sku)[0] is not None
 
-def subtract_inventory_from_order(cart, sku_to_name, MASTER, sheet_name):
-    """Subtract items from inventory using Google Sheets"""
+def load_products_from_supabase():
+    """Load products from Supabase and format for email sender compatibility"""
     try:
-        from config import get_service_account_credentials
-        import gspread
-        from google.oauth2.service_account import Credentials
+        supabase = get_authed_supabase()
+        res = supabase.table("products").select("*").execute()
+        rows = getattr(res, "data", None) or []
+    except Exception as e:
+        st.error(f"Unable to load products from Supabase: {e}")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame()
+
+    # Rename columns to match expected format for email sender
+    df = df.rename(columns={
+        "category": "Category",
+        "name": "Product name", 
+        "status": "Product Status",
+        "sku": "SKU#",
+        "price": "Final Price",
+    })
+
+    # Ensure required columns exist
+    required_cols = ["Category", "Product name", "Product Status", "SKU#", "Final Price"]
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = ""
+
+    df["Product name"] = df["Product name"].astype(str).str.strip()
+    df["Category"] = df["Category"].astype(str).str.strip()
+    df["SKU#"] = df["SKU#"].astype(str).str.strip()
+    
+    return df
+
+def subtract_inventory_from_order_supabase(cart, sku_to_name, MASTER):
+    """Subtract items from inventory using Supabase"""
+    try:
+        supabase = get_authed_supabase()
         
-        creds_dict = get_service_account_credentials()
-        if not creds_dict:
-            return False, "No credentials"
-            
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        client = gspread.authorize(creds)
+        # Load current inventory
+        res = supabase.table("inventory").select("*").execute()
+        rows = getattr(res, "data", None) or []
+        if not rows:
+            return False, "No inventory data found"
         
-        spreadsheet = client.open(sheet_name)
-        # Use the first worksheet by default
-        sheet = spreadsheet.get_worksheet(0)
-        
-        data = sheet.get_all_records()
-        df = pd.DataFrame(data)
-        
-        # Ensure required columns exist
-        if "Stock Left" not in df.columns: return False, "Stock Left column missing"
-        if "Item Name" not in df.columns: return False, "Item Name column missing"
+        inv_df = pd.DataFrame(rows)
+        inv_df["sku"] = inv_df["sku"].astype(str).str.strip()
         
         updates = 0
         for sku, qty in cart.items():
-            # Find item by SKU or Name
-            match_idx = None
+            sku_str = str(sku).strip()
             name = sku_to_name.get(sku, sku)
             
-            if "SKU#" in df.columns and sku in df["SKU#"].values:
-                match_idx = df[df["SKU#"] == sku].index[0]
-            elif name in df["Item Name"].values:
-                match_idx = df[df["Item Name"] == name].index[0]
+            # Find inventory record by SKU
+            match = inv_df[inv_df["sku"] == sku_str]
+            if match.empty:
+                # Try by item name as fallback
+                name_match = inv_df[inv_df["item_name"] == name]
+                if not name_match.empty:
+                    match = name_match
+            
+            if not match.empty:
+                existing = match.iloc[0]
+                current_stock = int(existing.get("stock_left", 0))
+                new_stock = current_stock - qty
                 
-            if match_idx is not None:
-                current_stock = int(pd.to_numeric(df.loc[match_idx, "Stock Left"], errors='coerce') or 0)
-                df.loc[match_idx, "Stock Left"] = current_stock - qty
+                # Calculate new status
+                if new_stock < 0:
+                    status = "Backordered"
+                elif new_stock == 0:
+                    status = "Out of stock"
+                elif new_stock <= 10:
+                    status = "Low stock"
+                else:
+                    status = "In stock"
+                
+                # Update inventory in Supabase
+                supabase.table("inventory").update({
+                    "stock_left": new_stock,
+                    "status": status
+                }).eq("sku", sku_str).execute()
                 updates += 1
         
         if updates > 0:
-            # Update status based on new stock levels
-            if "Status" in df.columns:
-                df["Status"] = df["Stock Left"].apply(lambda x: "Backordered" if int(x) < 0 else "In stock" if int(x) > 10 else "Low stock" if int(x) > 0 else "Out of stock")
+            return True, f"Updated {updates} items in Supabase"
+        else:
+            return True, "No items matched in inventory"
             
-            sheet.clear()
-            sheet.update(values=[df.columns.tolist()] + df.values.tolist(), range_name="A1")
-            return True, f"Updated {updates} items"
-            
-        return True, "No items matched in inventory"
-        
     except Exception as e:
-        return False, str(e)
+        return False, f"Supabase error: {str(e)}"
+
+def subtract_inventory_from_order(cart, sku_to_name, MASTER, sheet_name):
+    """Legacy wrapper - use Supabase version"""
+    return subtract_inventory_from_order_supabase(cart, sku_to_name, MASTER)
 
 def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config, key_prefix, allow_inventory_subtraction=True):
     entry_tab1, entry_tab2, entry_tab3 = st.tabs(["Single Entry", "Medium Entry", "Large Entry"])
@@ -351,37 +392,59 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
             st.rerun()
 
 
-def show_email_sender(MASTER, sku_to_name, name_to_sku, sku_to_price, sku_to_category, email_config=None, inv_config=None):
+def show_email_sender(email_config=None, inv_config=None):
     """Main email sender interface"""
     st.title("Email Sender")
-    st.caption("Send automated fulfillment emails.")
     
-    if not email_config:
-        st.error("❌ Email credentials not configured. Please go to 'My Settings' to set them up.")
+    # Load products from Supabase
+    MASTER = load_products_from_supabase()
+    if MASTER.empty:
+        st.error("No products found in Supabase. Please add products first.")
         return
+    
+    # Create lookup dictionaries
+    sku_to_name = dict(zip(MASTER["SKU#"], MASTER["Product name"]))
+    name_to_sku = {v: k for k, v in sku_to_name.items()}
+    sku_to_price = {sku: float(p) for sku, p in zip(MASTER["SKU#"], MASTER["Final Price"])}
+    sku_to_category = dict(zip(MASTER["SKU#"], MASTER["Category"]))
+    st.caption("Send automated fulfillment emails.")
 
-    SENDER_EMAIL = email_config.get("email")
-    
-    # Handle encrypted password
-    password_encrypted = email_config.get("password_encrypted")
-    if password_encrypted:
-        # Decrypt the password
-        from cryptography.fernet import Fernet
-        import base64
-        
-        # Get encryption key
-        key_file = "credentials/encryption.key"
-        with open(key_file, 'rb') as f:
-            key = f.read()
-        f = Fernet(key)
-        APP_PASSWORD = f.decrypt(password_encrypted.encode()).decode()
-    else:
-        # Fallback to plain password (for backward compatibility)
-        APP_PASSWORD = email_config.get("password")
-    
+    # Global override (recommended): Streamlit secrets / env vars
+    try:
+        SENDER_EMAIL = st.secrets.get("SMTP_SENDER_EMAIL")
+        APP_PASSWORD = st.secrets.get("SMTP_APP_PASSWORD")
+    except Exception:
+        SENDER_EMAIL = None
+        APP_PASSWORD = None
+
+    SENDER_EMAIL = SENDER_EMAIL or os.getenv("SMTP_SENDER_EMAIL")
+    APP_PASSWORD = APP_PASSWORD or os.getenv("SMTP_APP_PASSWORD")
+
+    if APP_PASSWORD:
+        APP_PASSWORD = re.sub(r"\s+", "", str(APP_PASSWORD))
+
+    # Fallback: user config from My Settings
+    if (not SENDER_EMAIL or not APP_PASSWORD) and email_config:
+        SENDER_EMAIL = SENDER_EMAIL or email_config.get("email")
+
+        password_encrypted = email_config.get("password_encrypted")
+        if password_encrypted:
+            from cryptography.fernet import Fernet
+
+            key_file = "credentials/encryption.key"
+            with open(key_file, 'rb') as f:
+                key = f.read()
+            f = Fernet(key)
+            APP_PASSWORD = APP_PASSWORD or f.decrypt(password_encrypted.encode()).decode()
+        else:
+            APP_PASSWORD = APP_PASSWORD or email_config.get("password")
+
+    if APP_PASSWORD:
+        APP_PASSWORD = re.sub(r"\s+", "", str(APP_PASSWORD))
+
     if not SENDER_EMAIL or not APP_PASSWORD:
-         st.error("❌ Incomplete email configuration. Please check 'My Settings'.")
-         return
+        st.error("❌ Email credentials not configured. Set SMTP_SENDER_EMAIL and SMTP_APP_PASSWORD in Streamlit secrets or environment variables.")
+        return
     
     if "orders" not in st.session_state: st.session_state.orders = []
     
@@ -560,8 +623,8 @@ def show_email_sender(MASTER, sku_to_name, name_to_sku, sku_to_price, sku_to_cat
                         msg.attach(logo_img)
                     
                     # Handle Inventory Subtraction
-                    if order.get("subtract_inventory") and order.get("target_sheet"):
-                        success, note = subtract_inventory_from_order(cart, sku_to_name, MASTER, order["target_sheet"])
+                    if order.get("subtract_inventory"):
+                        success, note = subtract_inventory_from_order_supabase(cart, sku_to_name, MASTER)
                         if success:
                             st.toast(f"Inventory updated for {order['First_Name']}: {note}")
                         else:

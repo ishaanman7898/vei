@@ -2,55 +2,163 @@ import streamlit as st
 import pandas as pd
 import os
 import shutil
+import json
+
+from supabase_client import get_authed_supabase, get_current_supabase_user_id
 
 def load_pwp():
-    if os.path.exists("PwP.csv"):
-        # Read CSV with proper type specification
-        df = pd.read_csv("PwP.csv")
-        
-        # Ensure all expected columns exist
-        expected_columns = [
-            "Category", "Product name", "Product Status", "SKU#", 
-            "Unit price", "Final Price", "Profit Margin", "Wholesale", 
-            "Store Manager", "POS", "Streamlit Implementation", 
-            "Website Implementation", "Buy Button Links", "Product Descriptions"
-        ]
-        
-        # Add missing columns if any
-        for col in expected_columns:
-            if col not in df.columns:
-                df[col] = ""
-                
-        # Convert boolean columns to boolean type
-        bool_columns = [
-            "Wholesale", "Store Manager", "POS", 
-            "Streamlit Implementation", "Website Implementation"
-        ]
-        for col in bool_columns:
-            if col in df.columns:
-                # Convert string 'TRUE'/'FALSE' to boolean
-                df[col] = df[col].astype(str).str.upper() == 'TRUE'
-                
-        # Ensure Product Descriptions is treated as string
-        if "Product Descriptions" in df.columns:
-            df["Product Descriptions"] = df["Product Descriptions"].astype(str)
-            
-        return df[expected_columns]  # Return columns in consistent order
-        
-    # Return empty DataFrame with correct columns if file doesn't exist
-    return pd.DataFrame(columns=[
-        "Category", "Product name", "Product Status", "SKU#", 
-        "Unit price", "Final Price", "Profit Margin", "Wholesale", 
-        "Store Manager", "POS", "Streamlit Implementation", 
-        "Website Implementation", "Buy Button Links", "Product Descriptions"
-    ])
+    expected_columns = [
+        "id",
+        "name",
+        "description",
+        "category",
+        "status",
+        "sku",
+        "price",
+        "buy_link",
+        "image_url",
+        "group_name",
+        "color",
+        "hex_color",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "specifications",
+    ]
+
+    try:
+        supabase = get_authed_supabase()
+        res = supabase.table("products").select(
+            "id,name,description,category,status,sku,price,buy_link,image_url,group_name,color,hex_color,created_at,updated_at,created_by,specifications"
+        ).execute()
+        rows = getattr(res, "data", None) or []
+    except Exception as e:
+        st.error(f"Unable to load products from Supabase: {e}")
+        return pd.DataFrame(columns=expected_columns)
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=expected_columns)
+
+    for col in expected_columns:
+        if col not in df.columns:
+            df[col] = ""
+
+    # Normalize types for Streamlit display
+    df["id"] = df["id"].astype(str)
+    df["sku"] = df["sku"].astype(str)
+    df["name"] = df["name"].astype(str)
+    df["category"] = df["category"].astype(str)
+    df["status"] = df["status"].astype(str)
+    df["buy_link"] = df["buy_link"].astype(str)
+    df["image_url"] = df["image_url"].astype(str)
+    df["group_name"] = df["group_name"].astype(str)
+    df["color"] = df["color"].astype(str)
+    df["hex_color"] = df["hex_color"].astype(str)
+    df["created_by"] = df["created_by"].astype(str)
+
+    if "price" in df.columns:
+        df["price"] = pd.to_numeric(df["price"], errors="coerce")
+
+    # Convert jsonb specifications to a JSON string for editing
+    def _spec_to_str(v):
+        if v is None or v == "":
+            return "{}"
+        if isinstance(v, str):
+            # Assume already JSON-ish
+            return v
+        try:
+            return json.dumps(v, ensure_ascii=False)
+        except Exception:
+            return "{}"
+
+    df["specifications"] = df["specifications"].apply(_spec_to_str)
+
+    # created_at/updated_at as strings for display
+    if "created_at" in df.columns:
+        df["created_at"] = df["created_at"].astype(str)
+    if "updated_at" in df.columns:
+        df["updated_at"] = df["updated_at"].astype(str)
+
+    return df[expected_columns]
 
 def save_pwp(df):
-    df.to_csv("PwP.csv", index=False)
+    try:
+        supabase = get_authed_supabase()
+    except Exception as e:
+        st.error(f"Unable to save products to Supabase: {e}")
+        return
+
+    payload = []
+    for _, row in df.iterrows():
+        sku = str(row.get("sku", "")).strip()
+        name = str(row.get("name", "")).strip()
+        if not sku or not name:
+            continue
+
+        price_val = row.get("price")
+        if price_val is None or str(price_val).strip() == "":
+            price_val = None
+        else:
+            try:
+                price_val = float(str(price_val).replace("$", "").replace(",", "").strip())
+            except Exception:
+                price_val = None
+
+        specs_raw = row.get("specifications")
+        specs_val = None
+        if specs_raw is None or str(specs_raw).strip() == "":
+            specs_val = {}
+        else:
+            if isinstance(specs_raw, (dict, list)):
+                specs_val = specs_raw
+            else:
+                try:
+                    specs_val = json.loads(str(specs_raw))
+                except Exception:
+                    st.error(f"Invalid JSON in specifications for SKU {sku}. Please fix it before saving.")
+                    return
+
+        payload.append({
+            "id": str(row.get("id", "")).strip() or None,
+            "sku": sku,
+            "name": name,
+            "description": str(row.get("description", "")).strip() or None,
+            "category": str(row.get("category", "")).strip() or None,
+            "status": str(row.get("status", "")).strip() or None,
+            "price": price_val,
+            "buy_link": str(row.get("buy_link", "")).strip() or None,
+            "image_url": str(row.get("image_url", "")).strip() or None,
+            "group_name": str(row.get("group_name", "")).strip() or None,
+            "color": str(row.get("color", "")).strip() or None,
+            "hex_color": str(row.get("hex_color", "")).strip() or None,
+            "specifications": specs_val,
+        })
+
+    if not payload:
+        return
+
+    # Avoid sending empty "id" values; keep id when present to help Supabase identify rows
+    for item in payload:
+        if not item.get("id"):
+            item.pop("id", None)
+
+    try:
+        supabase.table("products").upsert(payload, on_conflict="sku").execute()
+    except Exception as e:
+        st.error(f"Unable to save products to Supabase: {e}")
+
+
+def upsert_product_image_url(sku: str, image_url: str):
+    try:
+        supabase = get_authed_supabase()
+        supabase.table("products").upsert({"sku": sku, "image_url": image_url}, on_conflict="sku").execute()
+    except Exception as e:
+        st.warning(f"Image saved locally but failed to update Supabase image_url: {e}")
 
 def show_product_management():
     st.title("Product Management")
-    st.caption("View, edit, and add products to your catalog (PwP.csv).")
+    st.caption("View, edit, and add products to your catalog (Supabase products).")
 
     # Load data
     df = load_pwp()
@@ -61,36 +169,34 @@ def show_product_management():
     # --- VIEW & EDIT ---
     with tab1:
         st.subheader("Current Product Catalog")
-        st.info("💡 Edit cells directly below and click 'Save Changes' to update PwP.csv")
+        st.info("💡 Edit cells directly below and click 'Save Changes' to update Supabase")
         
         # Create a copy of the dataframe for editing
         editable_df = df.copy()
+        if "price" in editable_df.columns:
+            editable_df["price"] = pd.to_numeric(editable_df["price"], errors="coerce")
         
         # Configure columns for the data editor
         column_config = {
-            "Product name": st.column_config.TextColumn("Product Name", required=True),
-            "Product Status": st.column_config.SelectboxColumn(
-                "Status",
+            "id": st.column_config.TextColumn("id"),
+            "name": st.column_config.TextColumn("name", required=True),
+            "description": st.column_config.TextColumn("description"),
+            "category": st.column_config.TextColumn("category"),
+            "status": st.column_config.SelectboxColumn(
+                "status",
                 options=["In Store", "Out of Stock", "Discontinued", "Removal Requested", "Phased Out", "Product in Design"],
-                required=True
             ),
-            "SKU#": st.column_config.TextColumn("SKU", required=True),
-            "Category": st.column_config.TextColumn("Category"),
-            "Unit price": st.column_config.TextColumn("Unit Price"),
-            "Final Price": st.column_config.TextColumn("Final Price"),
-            "Profit Margin": st.column_config.TextColumn("Profit Margin"),
-            "Wholesale": st.column_config.CheckboxColumn("Wholesale"),
-            "Store Manager": st.column_config.CheckboxColumn("Store Mgr"),
-            "POS": st.column_config.CheckboxColumn("POS"),
-            "Streamlit Implementation": st.column_config.CheckboxColumn("Streamlit"),
-            "Website Implementation": st.column_config.CheckboxColumn("Website"),
-            "Buy Button Links": st.column_config.LinkColumn("Buy Link"),
-            "Product Descriptions": st.column_config.TextColumn(
-                "Description",
-                help="Product description (supports multiple lines)",
-                max_chars=500,
-                validate="^.{0,500}$"
-            )
+            "sku": st.column_config.TextColumn("sku", required=True),
+            "price": st.column_config.NumberColumn("price", format="%.2f"),
+            "buy_link": st.column_config.LinkColumn("buy_link"),
+            "image_url": st.column_config.TextColumn("image_url"),
+            "group_name": st.column_config.TextColumn("group_name"),
+            "color": st.column_config.TextColumn("color"),
+            "hex_color": st.column_config.TextColumn("hex_color"),
+            "created_at": st.column_config.TextColumn("created_at"),
+            "updated_at": st.column_config.TextColumn("updated_at"),
+            "created_by": st.column_config.TextColumn("created_by"),
+            "specifications": st.column_config.TextColumn("specifications", help="JSON"),
         }
         
         # Display the data editor
@@ -99,6 +205,7 @@ def show_product_management():
             column_config=column_config,
             num_rows="dynamic",
             use_container_width=True,
+            disabled=["id", "created_at", "updated_at", "created_by"],
             key="product_editor"
         )
 
@@ -112,51 +219,74 @@ def show_product_management():
     with tab2:
         st.subheader("Add New Product")
         
+        # Specifications editor outside the form (st.button not allowed in st.form)
+        specs_key = "new_product_specs_editor"
+        if specs_key not in st.session_state:
+            st.session_state[specs_key] = pd.DataFrame({
+                "Specification name (e.g., capacity, material)": [""],
+                "Value (e.g., 40 oz, Stainless Steel)": [""],
+            })
+
+        st.markdown("**Specifications:**")
+        specs_df = st.data_editor(
+            st.session_state[specs_key],
+            num_rows="dynamic",
+            use_container_width=True,
+            key="new_specs_table"
+        )
+        st.session_state[specs_key] = specs_df
+
+        if st.button("Add Specification", key="add_spec_row"):
+            st.session_state[specs_key] = pd.concat(
+                [
+                    st.session_state[specs_key],
+                    pd.DataFrame({
+                        "Specification name (e.g., capacity, material)": [""],
+                        "Value (e.g., 40 oz, Stainless Steel)": [""],
+                    })
+                ],
+                ignore_index=True
+            )
+            st.rerun()
+
         with st.form("add_product_form"):
             c1, c2 = st.columns(2)
             with c1:
-                new_name = st.text_input("Product Name*", help="Required")
-                new_status = st.selectbox("Product Status*", 
-                    ["In Store", "Out of Stock", "Discontinued", "Removal Requested"], 
-                    index=0)
-                new_sku = st.text_input("SKU*", help="Required - must be unique")
-                new_category = st.selectbox("Category", 
-                    options=sorted(df["Category"].dropna().unique().tolist()) + ["New Category..."],
-                    index=0 if df["Category"].dropna().unique().tolist() else -1)
+                new_name = st.text_input("Product Name", help="Required")
+                new_sku = st.text_input("SKU", help="Required - must be unique")
+
+                new_description = st.text_area(
+                    "Description",
+                    help="Detailed product description"
+                )
+
+                category_options = sorted([c for c in df.get("category", pd.Series(dtype=str)).dropna().unique().tolist() if str(c).strip()])
+                new_category = st.selectbox(
+                    "Category",
+                    options=category_options + (["New Category..."] if True else []),
+                    index=0 if category_options else 0,
+                )
                 
                 if new_category == "New Category...":
                     new_category = st.text_input("Enter New Category Name")
-                
-                new_unit_price = st.text_input("Unit Price (e.g. $10.00)*", value="$0.00", 
-                    help="Cost to you")
-                new_final_price = st.text_input("Final Price (e.g. $19.99)*", value="$0.00", 
-                    help="Selling price")
-                
-                # Product description
-                new_description = st.text_area("Product Description", 
-                    help="Detailed product description")
+
+                new_status = st.selectbox(
+                    "Status",
+                    ["In Store", "Out of Stock", "Discontinued", "Removal Requested", "Phased Out", "Product in Design"],
+                    index=0
+                )
+
+                new_final_price = st.number_input("Price", min_value=0.0, value=0.0, step=0.01, format="%.2f")
+
+                new_group_name = st.text_input("Group Name", value="")
+                new_color = st.text_input("Color/Variant", value="")
+                new_hex_color = st.text_input("Hex Color", value="#000000", help="Example: #800000")
             
             with c2:
-                new_profit_margin = st.text_input("Profit Margin (e.g. 100.50%)", 
-                    value="", 
-                    help="Leave empty to auto-calculate from Unit Price and Final Price")
-                
-                st.write("**Product Availability:**")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    new_wholesale = st.checkbox("Wholesale", value=True)
-                    new_streamlit = st.checkbox("Streamlit", value=True)
-                with col2:
-                    new_store_manager = st.checkbox("Store Manager", value=True)
-                    new_website = st.checkbox("Website", value=True)
-                with col3:
-                    new_pos = st.checkbox("POS", value=True)
-                
-                new_buy_link = st.text_input("Buy Button Link", 
+                new_buy_link = st.text_input("Buy Link", 
                     value="", 
                     help="URL for the buy button")
-                
-                # Image Upload
+
                 uploaded_image = st.file_uploader("Product Image", type=['png', 'jpg', 'jpeg'])
             
             submitted = st.form_submit_button("Add Product", type="primary")
@@ -166,81 +296,58 @@ def show_product_management():
                     st.error("Product Name and SKU are required!")
                 else:
                     # Check if SKU already exists
-                    if new_sku in df["SKU#"].values:
+                    if "sku" in df.columns and str(new_sku).strip() in df["sku"].astype(str).values:
                         st.error(f"SKU '{new_sku}' already exists!")
                     else:
-                        # Calculate profit margin
-                        margin = new_profit_margin.strip()
-                        if not margin:
-                            # Auto-calculate from prices
-                            try:
-                                # Extract numeric values from price strings
-                                import re
-                                unit_val = float(re.sub(r'[^\d.]', '', new_unit_price))
-                                final_val = float(re.sub(r'[^\d.]', '', new_final_price))
-                                
-                                if unit_val > 0:
-                                    profit_pct = ((final_val - unit_val) / unit_val) * 100
-                                    margin = f"{profit_pct:.2f}%"
-                                else:
-                                    margin = "0.00%"
-                            except:
-                                margin = "0.00%"
-                        
-                        # Ensure margin has % sign
-                        if margin and not margin.endswith("%"):
-                            margin = margin + "%"
-                        
-                        # Add new product to dataframe
-                        new_product = {
-                            'Category': new_category,
-                            'Product name': new_name,
-                            'Product Status': new_status,
-                            'SKU#': new_sku,
-                            'Unit price': new_unit_price,
-                            'Final Price': new_final_price,
-                            'Profit Margin': margin,
-                            'Wholesale': new_wholesale,
-                            'Store Manager': new_store_manager,
-                            'POS': new_pos,
-                            'Streamlit Implementation': new_streamlit,
-                            'Website Implementation': new_website,
-                            'Buy Button Links': new_buy_link,
-                            'Product Descriptions': new_description
-                        }
+                        user_id = get_current_supabase_user_id()
+                        image_url = None
+
+                        specs_val = {}
+                        for _, r in st.session_state[specs_key].iterrows():
+                            k = str(r.get("Specification name (e.g., capacity, material)", "")).strip()
+                            v = str(r.get("Value (e.g., 40 oz, Stainless Steel)", "")).strip()
+                            if k:
+                                specs_val[k] = v
                         
                         # Save Image
                         if uploaded_image:
-                            os.makedirs("product_images", exist_ok=True)
+                            os.makedirs("product-images", exist_ok=True)
                             # Get extension
                             ext = os.path.splitext(uploaded_image.name)[1]
                             if not ext: ext = ".png"
                             
-                            image_path = f"product_images/{new_sku}{ext}"
+                            image_path = f"product-images/{new_sku}{ext}"
                             with open(image_path, "wb") as f:
                                 f.write(uploaded_image.getbuffer())
                             st.info(f"Image saved to {image_path}")
-                        
-                        # Append to DataFrame
-                        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                        save_pwp(df)
+                            image_url = f"/product-images/{new_sku}{ext}"
+
+                        payload = {
+                            "sku": str(new_sku).strip(),
+                            "name": str(new_name).strip(),
+                            "category": str(new_category).strip() or None,
+                            "status": str(new_status).strip() or None,
+                            "price": float(new_final_price) if new_final_price is not None else None,
+                            "buy_link": str(new_buy_link).strip() or None,
+                            "description": str(new_description).strip() or None,
+                            "group_name": str(new_group_name).strip() or None,
+                            "color": str(new_color).strip() or None,
+                            "hex_color": str(new_hex_color).strip() or None,
+                            "created_by": user_id,
+                            "specifications": specs_val,
+                        }
+                        if image_url:
+                            payload["image_url"] = image_url
+
+                        try:
+                            supabase = get_authed_supabase()
+                            supabase.table("products").insert(payload).execute()
+                        except Exception as e:
+                            st.error(f"Failed to add product to Supabase: {e}")
+                            return
                         
                         # Show detailed confirmation
-                        st.success(f"✅ Successfully added '{new_name}' to PwP.csv!")
-                        st.info(f"""
-                        **Product Details Saved:**
-                        - **Product Name:** {new_name}
-                        - **SKU:** {new_sku}
-                        - **Category:** {new_category}
-                        - **Unit Price:** {new_unit_price}
-                        - **Final Price:** {new_final_price}
-                        - **Profit Margin:** {margin}
-                        - **Buy Link:** {new_buy_link if new_buy_link else "None"}
-                        - **Wholesale:** {str(new_wholesale).upper()}
-                        - **Store Manager:** {str(new_store_manager).upper()}
-                        - **POS:** {str(new_pos).upper()}
-                        """)
-                        st.balloons()
+                        st.success(f"✅ Successfully added '{new_name}' to Supabase!")
                         st.cache_data.clear()
                         
                         # Clear form by deleting the form-related session state

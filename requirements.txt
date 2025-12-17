@@ -6,3 +6,5 @@ cryptography>=41.0.0
 PyJWT>=2.8.0
 gspread>=5.10.0
 google-auth>=2.22.0
+supabase>=2.4.3
+python-dotenv>=1.0.1

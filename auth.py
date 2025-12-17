@@ -3,8 +3,7 @@ import time
 import hashlib
 import os
 import json
-import jwt
-from simple_auth import verify_login
+from supabase_client import supabase_sign_in
 
 def get_session_file(email):
     """Get session file path for a user email"""
@@ -32,13 +31,13 @@ def check_authentication():
                         # Check if session is still valid (30 days)
                         if time.time() - session_data.get('timestamp', 0) < 2592000:  # 30 days
                             user_data = session_data.get('user_data')
+                            supabase_session = session_data.get('supabase_session')
                             if user_data and user_data.get('email'):
-                                # Verify user still exists
-                                from simple_auth import get_user_by_email
-                                if get_user_by_email(user_data['email']):
-                                    st.session_state.authenticated = True
-                                    st.session_state.current_user = user_data
-                                    return True
+                                st.session_state.authenticated = True
+                                st.session_state.current_user = user_data
+                                if supabase_session:
+                                    st.session_state.supabase_session = supabase_session
+                                return True
                 except:
                     continue
     
@@ -80,37 +79,31 @@ def check_authentication():
                 if not email or not password:
                     st.error("Please enter both email and password")
                 else:
-                    # Try to verify login with email/password
-                    user_data = verify_login(email, password)
-                    
-                    if user_data:
-                        # Check if user has at least one permission
-                        has_any_permission = any(user_data.get('permissions', {}).values())
-                        
-                        if not has_any_permission:
-                            st.error("Access Denied: You have no permissions assigned.")
-                            st.info("Please contact your administrator to request permissions.")
-                        else:
-                            # Successful login - save session
-                            user_data['email'] = email
-                            st.session_state.authenticated = True
-                            st.session_state.current_user = user_data
-                            
-                            # Save session to file for persistence (email-based for cross-device)
-                            os.makedirs("credentials/sessions", exist_ok=True)
-                            session_file = get_session_file(email)
-                            session_data = {
-                                'user_data': user_data,
-                                'timestamp': time.time()
-                            }
-                            with open(session_file, 'w') as f:
-                                json.dump(session_data, f)
-                            
-                            st.success(f"Welcome back, {user_data['name']}!")
-                            time.sleep(1)
-                            st.rerun()
-                    else:
-                        st.error("Invalid email or password")
+                    try:
+                        supabase_session = supabase_sign_in(email, password)
+                    except Exception as e:
+                        st.error(f"Invalid email or password ({e})")
+                        st.stop()
+
+                    name = email.split("@", 1)[0] if email else "User"
+                    user_data = {"email": email, "name": name}
+                    st.session_state.authenticated = True
+                    st.session_state.current_user = user_data
+                    st.session_state.supabase_session = supabase_session
+
+                    os.makedirs("credentials/sessions", exist_ok=True)
+                    session_file = get_session_file(email)
+                    session_data = {
+                        'user_data': user_data,
+                        'supabase_session': supabase_session,
+                        'timestamp': time.time()
+                    }
+                    with open(session_file, 'w') as f:
+                        json.dump(session_data, f)
+
+                    st.success(f"Welcome back, {user_data['name']}!")
+                    time.sleep(1)
+                    st.rerun()
 
         # Footer Links
         st.markdown("""
@@ -137,12 +130,13 @@ def get_current_user():
                         session_data = json.load(f)
                         if time.time() - session_data.get('timestamp', 0) < 2592000:  # 30 days
                             user_data = session_data.get('user_data')
+                            supabase_session = session_data.get('supabase_session')
                             if user_data and user_data.get('email'):
-                                from simple_auth import get_user_by_email
-                                if get_user_by_email(user_data['email']):
-                                    st.session_state.authenticated = True
-                                    st.session_state.current_user = user_data
-                                    return user_data
+                                st.session_state.authenticated = True
+                                st.session_state.current_user = user_data
+                                if supabase_session:
+                                    st.session_state.supabase_session = supabase_session
+                                return user_data
                 except:
                     continue
     
@@ -150,8 +144,5 @@ def get_current_user():
 
 def check_permission(permission_name):
     """Check if current user has specific permission"""
-    user = get_current_user()
-    if user is None:
-        return False
-    return user.get("permissions", {}).get(permission_name, False)
+    return True
 

@@ -1,7 +1,7 @@
 import streamlit as st
 import json
 import time
-from simple_auth import update_user_config, get_user_config
+from user_config import update_user_config, get_user_config
 
 def show_user_settings():
     st.title("⚙️ My Settings")
