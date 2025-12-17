@@ -5,41 +5,11 @@ import os
 import json
 from supabase_client import supabase_sign_in
 
-def get_session_file(email):
-    """Get session file path for a user email"""
-    # Use email hash for session file name so it persists across devices
-    email_hash = hashlib.md5(email.encode()).hexdigest()
-    return f"credentials/sessions/{email_hash}.json"
 
 def check_authentication():
     """
     Authentication using email/password only with session persistence
     """
-    
-    # Check if already authenticated in current session
-    if st.session_state.get("authenticated", False):
-        return True
-    
-    # Try to restore from any valid session file (for cross-device persistence)
-    sessions_dir = "credentials/sessions"
-    if os.path.exists(sessions_dir):
-        for session_file in os.listdir(sessions_dir):
-            if session_file.endswith('.json'):
-                try:
-                    with open(os.path.join(sessions_dir, session_file), 'r') as f:
-                        session_data = json.load(f)
-                        # Check if session is still valid (30 days)
-                        if time.time() - session_data.get('timestamp', 0) < 2592000:  # 30 days
-                            user_data = session_data.get('user_data')
-                            supabase_session = session_data.get('supabase_session')
-                            if user_data and user_data.get('email'):
-                                st.session_state.authenticated = True
-                                st.session_state.current_user = user_data
-                                if supabase_session:
-                                    st.session_state.supabase_session = supabase_session
-                                return True
-                except:
-                    continue
     
     # Check if already authenticated in current session
     if st.session_state.get("authenticated", False):
@@ -91,16 +61,6 @@ def check_authentication():
                     st.session_state.current_user = user_data
                     st.session_state.supabase_session = supabase_session
 
-                    os.makedirs("credentials/sessions", exist_ok=True)
-                    session_file = get_session_file(email)
-                    session_data = {
-                        'user_data': user_data,
-                        'supabase_session': supabase_session,
-                        'timestamp': time.time()
-                    }
-                    with open(session_file, 'w') as f:
-                        json.dump(session_data, f)
-
                     st.success(f"Welcome back, {user_data['name']}!")
                     time.sleep(1)
                     st.rerun()
@@ -120,26 +80,7 @@ def get_current_user():
     if user:
         return user
     
-    # Try to load from any valid session file
-    sessions_dir = "credentials/sessions"
-    if os.path.exists(sessions_dir):
-        for session_file in os.listdir(sessions_dir):
-            if session_file.endswith('.json'):
-                try:
-                    with open(os.path.join(sessions_dir, session_file), 'r') as f:
-                        session_data = json.load(f)
-                        if time.time() - session_data.get('timestamp', 0) < 2592000:  # 30 days
-                            user_data = session_data.get('user_data')
-                            supabase_session = session_data.get('supabase_session')
-                            if user_data and user_data.get('email'):
-                                st.session_state.authenticated = True
-                                st.session_state.current_user = user_data
-                                if supabase_session:
-                                    st.session_state.supabase_session = supabase_session
-                                return user_data
-                except:
-                    continue
-    
+    # Session persistence disabled - user must login every time
     return None
 
 def check_permission(permission_name):

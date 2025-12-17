@@ -75,7 +75,7 @@ def show_user_settings():
         with st.form("inv_settings_form"):
             sheet_name = st.text_input(
                 "Sheet Name", 
-                value=inv_config.get("sheet_name", "Inventory Recognition"),
+                value=inv_config.get("sheet_name", "VEI Inventory"),
                 placeholder="e.g., VEI Inventory 2025",
                 help="This will use the admin-configured credentials"
             )

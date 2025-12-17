@@ -202,7 +202,7 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
             if allow_inventory_subtraction:
                 subtract_inv = st.checkbox("Subtract from Inventory?", value=True, key=f"single_subtract_inv_{key_prefix}")
                 if subtract_inv:
-                    default_sheet = inv_config.get('sheet_name', 'Inventory Recognition') if inv_config else 'Inventory Recognition'
+                    default_sheet = inv_config.get('sheet_name', 'VEI Inventory') if inv_config else 'VEI Inventory'
                     target_sheet = st.text_input("Inventory Sheet Name", value=default_sheet, key=f"single_sheet_{key_prefix}")
             else:
                 subtract_inv = False
