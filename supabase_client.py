@@ -48,17 +48,34 @@ def get_supabase() -> Client:
 
 
 def supabase_sign_in(email: str, password: str) -> Dict[str, Any]:
-    supabase = get_supabase()
-    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+    import time
+    
+    # Retry logic for network timeouts
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            supabase = get_supabase()
+            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
 
-    session = getattr(res, "session", None)
-    if not session:
-        raise RuntimeError("Supabase sign-in did not return a session.")
+            session = getattr(res, "session", None)
+            if not session:
+                raise RuntimeError("Supabase sign-in did not return a session.")
 
-    return {
-        "access_token": session.access_token,
-        "refresh_token": session.refresh_token,
-    }
+            return {
+                "access_token": session.access_token,
+                "refresh_token": session.refresh_token,
+            }
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "timeout" in error_msg or "timed out" in error_msg:
+                if attempt < max_retries - 1:
+                    time.sleep(2)  # Wait 2 seconds before retry
+                    continue
+                else:
+                    raise RuntimeError(f"Connection timeout after {max_retries} attempts. Please check your internet connection and try again.")
+            else:
+                # Not a timeout error, raise immediately
+                raise
 
 
 def get_authed_supabase() -> Client:

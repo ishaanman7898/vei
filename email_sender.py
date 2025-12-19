@@ -14,12 +14,15 @@ from supabase_client import get_authed_supabase
 from email_templates import get_fulfillment_email_html, generate_items_html
 
 def get_image_url_from_supabase(sku, supabase):
-    """Get image URL from Supabase storage for a given SKU"""
+    """Get image URL from inventory table for a given SKU"""
     try:
-        # Try to get product with image_url
-        res = supabase.table("products").select("image_url").eq("sku", sku).execute()
+        # Get image_url from inventory table (constantly updated)
+        res = supabase.table("inventory").select("image_url").eq("sku", sku).execute()
         if hasattr(res, 'data') and res.data and res.data[0].get('image_url'):
-            return res.data[0]['image_url']
+            image_url = res.data[0]['image_url']
+            # Return None if it's the placeholder value
+            if image_url and image_url != 'N/A':
+                return image_url
     except Exception:
         pass
     return None
@@ -65,33 +68,38 @@ def get_storage_image_list():
         return []
 
 def has_image(sku, product_df=None):
-    """Check if product has an image (Supabase storage or local)"""
-    # Check Supabase storage using cached list
-    try:
-        storage_files = get_storage_image_list()
-        for ext in ['.jpg', '.jpeg', '.png', '.JPG', '.PNG']:
-            filename = f"{sku}{ext}"
-            if filename in storage_files:
-                return True
-    except Exception:
-        pass
-    
-    # Check if product has valid image_url in database
+    """Check if product has an image (checks inventory table image_url ONLY - strict mode)"""
+    # STRICT MODE: Only check inventory table image_url
+    # This ensures we only send emails with products that have proper image URLs in inventory
     if product_df is not None:
         try:
             match = product_df[product_df["SKU#"] == sku]
             if not match.empty and 'image_url' in match.columns:
                 image_url = match.iloc[0].get('image_url')
-                if image_url and str(image_url).strip() and str(image_url) not in ['nan', 'None', '', 'null']:
-                    # Verify it's a valid URL
-                    url_str = str(image_url).strip()
-                    if url_str.startswith('http'):
-                        return True
-        except Exception:
-            pass
+                
+                # DEBUG: Print what we're checking
+                print(f"[DEBUG] Checking SKU '{sku}': image_url = '{image_url}' (type: {type(image_url)})")
+                
+                # Reject if image_url is None, empty, or 'N/A'
+                if not image_url or str(image_url).strip() in ['', 'nan', 'None', 'null', 'N/A']:
+                    print(f"[DEBUG] SKU '{sku}' REJECTED: Invalid or missing image_url")
+                    return False
+                # Verify it's a valid HTTP URL
+                url_str = str(image_url).strip()
+                if url_str.startswith('http'):
+                    print(f"[DEBUG] SKU '{sku}' APPROVED: Valid HTTP URL")
+                    return True
+                print(f"[DEBUG] SKU '{sku}' REJECTED: URL doesn't start with 'http'")
+                return False
+            else:
+                print(f"[DEBUG] SKU '{sku}' REJECTED: No match found or no image_url column")
+        except Exception as e:
+            print(f"[DEBUG] SKU '{sku}' REJECTED: Exception - {e}")
+            return False
     
-    # Fallback to local files
-    return get_image_path(sku)[0] is not None
+    # If no product_df provided, assume no image
+    print(f"[DEBUG] SKU '{sku}' REJECTED: No product_df provided")
+    return False
 
 def fetch_image_from_url(url):
     """Download image from URL and return bytes"""
@@ -104,13 +112,14 @@ def fetch_image_from_url(url):
     return None
 
 def load_products_from_supabase():
-    """Load products from Supabase and format for email sender compatibility"""
+    """Load products from inventory table (constantly updated) for email sender"""
     try:
         supabase = get_authed_supabase()
-        res = supabase.table("products").select("*").execute()
+        # Load from inventory table which has all product data + stock info + image URLs
+        res = supabase.table("inventory").select("*").execute()
         rows = getattr(res, "data", None) or []
     except Exception as e:
-        st.error(f"Unable to load products from Supabase: {e}")
+        st.error(f"Unable to load inventory from Supabase: {e}")
         return pd.DataFrame()
 
     df = pd.DataFrame(rows)
@@ -120,7 +129,7 @@ def load_products_from_supabase():
     # Rename columns to match expected format for email sender
     df = df.rename(columns={
         "category": "Category",
-        "name": "Product name", 
+        "item_name": "Product name", 
         "status": "Product Status",
         "sku": "SKU#",
         "price": "Final Price",
@@ -139,6 +148,13 @@ def load_products_from_supabase():
     df["Product name"] = df["Product name"].astype(str).str.strip()
     df["Category"] = df["Category"].astype(str).str.strip()
     df["SKU#"] = df["SKU#"].astype(str).str.strip()
+    
+    # Handle NULL prices - convert to 0.0
+    if "Final Price" in df.columns:
+        df["Final Price"] = df["Final Price"].fillna(0.0)
+    
+    # Filter out products with 0 or negative stock (optional - uncomment if needed)
+    # df = df[df.get("stock_left", 0) > 0]
     
     return df
 
@@ -256,7 +272,8 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                     for idx, row in enumerate(categories[category]):
                         sku = row["SKU#"]
                         name = row["Product name"]
-                        price = float(row.get("Final Price", 0))
+                        price_val = row.get("Final Price", 0)
+                        price = float(price_val) if price_val is not None else 0.0
                         count = st.session_state[cart_key].get(sku, 0)
                         
                         # Build label with NO IMAGE indicator
@@ -278,8 +295,13 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                 name = sku_to_name.get(sku, sku)
                 price = sku_to_price.get(sku, 0)
                 total = price * qty
+                has_img = has_image(sku, MASTER)
                 c1, c2, c3, c4 = st.columns([3, 1, 1, 0.5])
-                with c1: st.write(f"**{name}**")
+                with c1: 
+                    if has_img:
+                        st.write(f"**{name}**")
+                    else:
+                        st.write(f"**{name}** 🚫 NO IMAGE")
                 with c2: st.write(f"${price:.2f} x {qty}")
                 with c3: st.write(f"${total:.2f}")
                 with c4:
@@ -530,16 +552,31 @@ def show_email_sender(email_config=None, inv_config=None):
     st.title("📧 Email Sender")
     st.caption("Send automated fulfillment and confirmation emails to customers.")
     
-    # Load products from Supabase
+    # Load products from inventory table (constantly updated with latest data)
     MASTER = load_products_from_supabase()
     if MASTER.empty:
-        st.error("No products found. Please add products in Product Management first.")
+        st.error("No products found in inventory. Please sync products first.")
+        st.info("Go to Inventory Management and click '🔄 Sync Products' button")
         return
+    
+    # Debug: Show products with missing images
+    if 'image_url' in MASTER.columns:
+        missing_images = MASTER[
+            (MASTER['image_url'].isna()) | 
+            (MASTER['image_url'] == '') | 
+            (MASTER['image_url'] == 'N/A') |
+            (~MASTER['image_url'].astype(str).str.startswith('http'))
+        ]
+        if not missing_images.empty:
+            st.error(f"⚠️ {len(missing_images)} products missing valid image URLs")
+            with st.expander("Click to view products without images"):
+                st.dataframe(missing_images[['SKU#', 'Product name', 'image_url']], use_container_width=True)
+                st.info("💡 Upload images in Product Management → Images tab, then run: UPDATE inventory SET image_url = products.image_url FROM products WHERE inventory.sku = products.sku")
     
     # Create lookup dictionaries
     sku_to_name = dict(zip(MASTER["SKU#"], MASTER["Product name"]))
     name_to_sku = {v: k for k, v in sku_to_name.items()}
-    sku_to_price = {sku: float(p) for sku, p in zip(MASTER["SKU#"], MASTER["Final Price"])}
+    sku_to_price = {sku: float(p) if p is not None else 0.0 for sku, p in zip(MASTER["SKU#"], MASTER["Final Price"])}
     sku_to_category = dict(zip(MASTER["SKU#"], MASTER["Category"]))
 
     # Get SMTP credentials from environment
@@ -565,16 +602,6 @@ def show_email_sender(email_config=None, inv_config=None):
     
     # Entry tabs
     render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config, "tab1")
-    
-    # Refresh image cache button
-    st.markdown("---")
-    if st.button("🔄 Refresh Image Cache", help="Refresh image availability from Supabase"):
-        if "supabase_storage_files" in st.session_state:
-            del st.session_state["supabase_storage_files"]
-        if "supabase_storage_files_time" in st.session_state:
-            del st.session_state["supabase_storage_files_time"]
-        st.success("Image cache refreshed!")
-        st.rerun()
 
     # ====================== QUEUE & SEND ======================
     if st.session_state.orders:
@@ -584,7 +611,15 @@ def show_email_sender(email_config=None, inv_config=None):
             total = order.get("Order_Total", sum(sku_to_price.get(s, 0)*q for s,q in order["Cart"].items()))
             c1, c3 = st.columns([4, 1])
             with c1:
-                items = ", ".join(f"{sku_to_name.get(s,s)}×{q}" for s,q in order["Cart"].items())
+                # Add visual indicator for products without images
+                items_display = []
+                for s, q in order["Cart"].items():
+                    name = sku_to_name.get(s, s)
+                    if not has_image(s, MASTER):
+                        items_display.append(f"🚫 {name}×{q}")
+                    else:
+                        items_display.append(f"{name}×{q}")
+                items = ", ".join(items_display)
                 st.markdown(f"**#{order['Order_Number']}** – {order['First_Name']} – ${total:.2f}<br><small>{items}</small>", unsafe_allow_html=True)
             with c3:
                 if st.button("Delete", key=f"del_{i}"):
@@ -614,8 +649,20 @@ def show_email_sender(email_config=None, inv_config=None):
             st.info("💡 Remove these orders from queue or add images in Product Management → Product Images tab")
         
         if st.button("SEND ALL EMAILS", type="primary", use_container_width=True, disabled=len(orders_with_missing_images) > 0):
-            if orders_with_missing_images:
-                st.error("Cannot send - some orders have products without images. Please fix or remove them from queue.")
+            # CRITICAL SAFETY CHECK: Re-validate all products have images before sending
+            final_check_missing = []
+            for order in st.session_state.orders:
+                for sku in order["Cart"].keys():
+                    if not has_image(sku, MASTER):
+                        final_check_missing.append(f"{sku_to_name.get(sku, sku)} (SKU: {sku})")
+            
+            if final_check_missing:
+                st.error(f"❌ BLOCKED: Cannot send emails - {len(final_check_missing)} products missing valid image URLs:")
+                for missing_item in final_check_missing[:10]:
+                    st.warning(f"• {missing_item}")
+                if len(final_check_missing) > 10:
+                    st.warning(f"... and {len(final_check_missing) - 10} more")
+                st.info("💡 Fix: Add valid image URLs to these products in the inventory table")
                 st.stop()
             
             server = smtplib.SMTP('smtp.gmail.com', 587)

@@ -8,11 +8,26 @@ from supabase_client import supabase_sign_in
 
 def check_authentication():
     """
-    Authentication using email/password only with session persistence
+    Authentication using email/password only with session persistence and 30-minute timeout
     """
+    import time
     
     # Check if already authenticated in current session
     if st.session_state.get("authenticated", False):
+        # Check session timeout (30 minutes = 1800 seconds)
+        last_activity = st.session_state.get("last_activity_time", 0)
+        current_time = time.time()
+        
+        if current_time - last_activity > 1800:  # 30 minutes
+            # Session expired
+            st.session_state.authenticated = False
+            st.session_state.pop("supabase_session", None)
+            st.session_state.pop("current_user", None)
+            st.warning("⏱️ Session expired after 30 minutes of inactivity. Please log in again.")
+            return False
+        
+        # Update last activity time
+        st.session_state.last_activity_time = current_time
         return True
     
  
@@ -60,6 +75,7 @@ def check_authentication():
                     st.session_state.authenticated = True
                     st.session_state.current_user = user_data
                     st.session_state.supabase_session = supabase_session
+                    st.session_state.last_activity_time = time.time()  # Set initial activity time
 
                     st.success(f"Welcome back, {user_data['name']}!")
                     time.sleep(1)

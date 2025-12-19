@@ -605,28 +605,45 @@ def show_inventory_management():
             pass
         st.session_state["inventory_autosynced"] = True
 
-    c_sync1, c_sync2 = st.columns([1, 3])
-    with c_sync1:
-        if st.button("🔄 Sync Products → Inventory", use_container_width=True):
-            try:
-                supabase = get_authed_supabase()
-                res = supabase.rpc("sync_all_products_to_inventory").execute()
-                created = getattr(res, "data", None)
-                if isinstance(created, int):
-                    st.success(f"Synced products to inventory. Added {created} missing inventory rows.")
-                else:
-                    st.success("Synced products to inventory.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to sync products to inventory: {e}")
-    with c_sync2:
-        st.caption("Ensures every product in `products` has an `inventory` row (0 stock by default).")
+    # Auto-sync images from storage to inventory once per session
+    if "inventory_images_synced" not in st.session_state:
+        try:
+            supabase = get_authed_supabase()
+            bucket_name = "email-product-pictures"
+            files = supabase.storage.from_(bucket_name).list()
+            
+            for file in files:
+                filename = file.get('name', '')
+                if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    sku = filename.rsplit('.', 1)[0]
+                    public_url = supabase.storage.from_(bucket_name).get_public_url(filename)
+                    
+                    # Update inventory with image URL
+                    supabase.table("inventory").update({
+                        "image_url": public_url
+                    }).eq("sku", sku).execute()
+        except Exception:
+            # Non-fatal; user can manually sync below
+            pass
+        st.session_state["inventory_images_synced"] = True
+
+    # Auto-sync happens via database triggers - no manual sync needed
+    st.caption("💡 Products and images sync automatically from the products table")
 
     if not summary_df.empty:
         st.subheader("Inventory Summary")
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
     st.subheader("Current Inventory")
+    
+    # Check for missing images
+    if not inv_df.empty and "image_url" in inv_df.columns:
+        missing_images = inv_df[(inv_df["image_url"] == "N/A") | (inv_df["image_url"].isna())]
+        if not missing_images.empty:
+            st.warning(f"⚠️ {len(missing_images)} products missing images. Upload images in Product Management → Images tab.")
+            with st.expander("View products missing images"):
+                st.dataframe(missing_images[["sku", "item_name", "image_url"]], use_container_width=True, hide_index=True)
+    
     if inv_df.empty:
         st.warning("Inventory table is empty. Add products (auto-sync trigger) or run SELECT sync_all_products_to_inventory();")
     else:
