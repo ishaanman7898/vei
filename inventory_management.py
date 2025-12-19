@@ -584,8 +584,8 @@ def parse_invoice(file, MASTER):
 
 def show_inventory_management():
     """Show inventory management interface with Supabase inventory"""
-    st.title("Inventory Management")
-    st.caption("Manage inventory in Supabase. Invoice uploads add stock; sales history subtracts stock.")
+    st.title("📦 Inventory Management")
+    st.caption("Track stock levels, upload invoices, and manage inventory.")
 
     MASTER = load_master()
     if MASTER.empty:

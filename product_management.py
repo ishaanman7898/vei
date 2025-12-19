@@ -157,14 +157,14 @@ def upsert_product_image_url(sku: str, image_url: str):
         st.warning(f"Image saved locally but failed to update Supabase image_url: {e}")
 
 def show_product_management():
-    st.title("Product Management")
-    st.caption("View, edit, and add products to your catalog (Supabase products).")
+    st.title("🏷️ Product Management")
+    st.caption("Manage your product catalog, images, and data.")
 
     # Load data
     df = load_pwp()
 
-    # Tabs
-    tab1, tab2, tab3 = st.tabs(["View & Edit Products", "Add New Product", "Product Merger"])
+    # Tabs with icons
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 View & Edit", "➕ Add Product", "🖼️ Images", "🔀 Merger"])
 
     # --- VIEW & EDIT ---
     with tab1:
@@ -309,18 +309,50 @@ def show_product_management():
                             if k:
                                 specs_val[k] = v
                         
-                        # Save Image
+                        # Save Image to Supabase
                         if uploaded_image:
-                            os.makedirs("product-images", exist_ok=True)
-                            # Get extension
-                            ext = os.path.splitext(uploaded_image.name)[1]
-                            if not ext: ext = ".png"
-                            
-                            image_path = f"product-images/{new_sku}{ext}"
-                            with open(image_path, "wb") as f:
-                                f.write(uploaded_image.getbuffer())
-                            st.info(f"Image saved to {image_path}")
-                            image_url = f"/product-images/{new_sku}{ext}"
+                            try:
+                                from PIL import Image
+                                import io
+                                
+                                # Compress image
+                                img = Image.open(uploaded_image)
+                                
+                                # Convert RGBA to RGB if needed
+                                if img.mode == 'RGBA':
+                                    background = Image.new('RGB', img.size, (255, 255, 255))
+                                    background.paste(img, mask=img.split()[3])
+                                    img = background
+                                
+                                # Resize if too large
+                                max_width = 800
+                                if img.width > max_width:
+                                    ratio = max_width / img.width
+                                    new_height = int(img.height * ratio)
+                                    img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                                
+                                # Compress to bytes
+                                output = io.BytesIO()
+                                img.save(output, format='JPEG', quality=85, optimize=True)
+                                compressed_data = output.getvalue()
+                                
+                                # Upload to Supabase
+                                bucket_name = "email-product-pictures"
+                                filename = f"{new_sku}.jpg"
+                                
+                                result = supabase.storage.from_(bucket_name).upload(
+                                    path=filename,
+                                    file=compressed_data,
+                                    file_options={"content-type": "image/jpeg", "upsert": "true"}
+                                )
+                                
+                                # Get public URL
+                                image_url = supabase.storage.from_(bucket_name).get_public_url(filename)
+                                st.info(f"✅ Image uploaded and compressed to Supabase")
+                                
+                            except Exception as e:
+                                st.warning(f"Image upload failed: {e}. Product will be created without image.")
+                                image_url = None
 
                         payload = {
                             "sku": str(new_sku).strip(),
@@ -356,8 +388,146 @@ def show_product_management():
                         
                         st.rerun()
 
-    # --- PRODUCT MERGER ---
+    # --- PRODUCT IMAGES ---
     with tab3:
+        st.subheader("Product Images Manager")
+        st.caption("Upload and manage product images in Supabase Storage")
+        
+        # Image upload section
+        st.markdown("### Upload New Image")
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Get list of SKUs for dropdown
+            sku_list = sorted([str(s).strip() for s in df["sku"].dropna().unique() if str(s).strip()])
+            selected_sku = st.selectbox("Select Product SKU", options=sku_list, key="image_upload_sku")
+            
+            uploaded_file = st.file_uploader(
+                "Choose product image",
+                type=['png', 'jpg', 'jpeg'],
+                help="Image will be compressed and uploaded to Supabase",
+                key="product_image_uploader"
+            )
+        
+        with col2:
+            st.markdown("**Compression Settings**")
+            max_width = st.number_input("Max Width (px)", min_value=400, max_value=2000, value=800, step=100)
+            quality = st.slider("JPEG Quality", min_value=60, max_value=100, value=85, step=5)
+        
+        if uploaded_file and selected_sku:
+            if st.button("📤 Upload & Compress Image", type="primary"):
+                try:
+                    from PIL import Image
+                    import io
+                    
+                    # Compress image
+                    img = Image.open(uploaded_file)
+                    
+                    # Convert RGBA to RGB if needed
+                    if img.mode == 'RGBA':
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        background.paste(img, mask=img.split()[3])
+                        img = background
+                    
+                    # Resize if too large
+                    if img.width > max_width:
+                        ratio = max_width / img.width
+                        new_height = int(img.height * ratio)
+                        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                    
+                    # Compress to bytes
+                    output = io.BytesIO()
+                    img.save(output, format='JPEG', quality=quality, optimize=True)
+                    compressed_data = output.getvalue()
+                    
+                    original_size = len(uploaded_file.getvalue())
+                    compressed_size = len(compressed_data)
+                    reduction = ((original_size - compressed_size) / original_size) * 100
+                    
+                    st.info(f"Compressed: {original_size//1024}KB → {compressed_size//1024}KB (-{reduction:.0f}%)")
+                    
+                    # Upload to Supabase
+                    supabase = get_authed_supabase()
+                    bucket_name = "email-product-pictures"
+                    filename = f"{selected_sku}.jpg"
+                    
+                    # Upload with upsert
+                    result = supabase.storage.from_(bucket_name).upload(
+                        path=filename,
+                        file=compressed_data,
+                        file_options={"content-type": "image/jpeg", "upsert": "true"}
+                    )
+                    
+                    # Get public URL
+                    public_url = supabase.storage.from_(bucket_name).get_public_url(filename)
+                    
+                    # Update product with image URL
+                    supabase.table("products").update({
+                        "image_url": public_url
+                    }).eq("sku", selected_sku).execute()
+                    
+                    st.success(f"✅ Image uploaded successfully for SKU: {selected_sku}")
+                    st.info(f"🔗 URL: {public_url}")
+                    st.cache_data.clear()
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Upload failed: {e}")
+        
+        st.markdown("---")
+        
+        # View existing images
+        st.markdown("### Current Product Images")
+        
+        # Filter products with images
+        products_with_images = df[df["image_url"].notna() & (df["image_url"] != "")].copy()
+        
+        if products_with_images.empty:
+            st.info("No products have images yet. Upload some above!")
+        else:
+            st.caption(f"Showing {len(products_with_images)} products with images")
+            
+            # Display in grid
+            cols_per_row = 3
+            rows = [products_with_images.iloc[i:i+cols_per_row] for i in range(0, len(products_with_images), cols_per_row)]
+            
+            for row_data in rows:
+                cols = st.columns(cols_per_row)
+                for idx, (_, product) in enumerate(row_data.iterrows()):
+                    with cols[idx]:
+                        st.markdown(f"**{product['name']}**")
+                        st.caption(f"SKU: {product['sku']}")
+                        
+                        # Display image
+                        image_url = product['image_url']
+                        if image_url and str(image_url).startswith('http'):
+                            try:
+                                st.image(image_url, use_container_width=True)
+                            except Exception:
+                                st.warning("Image failed to load")
+                        
+                        # Delete button
+                        if st.button(f"🗑️ Remove", key=f"delete_img_{product['sku']}"):
+                            try:
+                                supabase = get_authed_supabase()
+                                
+                                # Remove from storage
+                                filename = f"{product['sku']}.jpg"
+                                supabase.storage.from_("email-product-pictures").remove([filename])
+                                
+                                # Update product to remove image_url
+                                supabase.table("products").update({
+                                    "image_url": None
+                                }).eq("sku", product['sku']).execute()
+                                
+                                st.success(f"Removed image for {product['sku']}")
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed to remove: {e}")
+
+    # --- PRODUCT MERGER ---
+    with tab4:
         st.subheader("Product Merger")
         st.caption("Merge Orders CSV and Items CSV into a consolidated format.")
         

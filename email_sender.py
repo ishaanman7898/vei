@@ -6,20 +6,102 @@ import re
 import time
 import smtplib
 import io
+import requests
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from supabase_client import get_authed_supabase
+from email_templates import get_fulfillment_email_html, generate_items_html
+
+def get_image_url_from_supabase(sku, supabase):
+    """Get image URL from Supabase storage for a given SKU"""
+    try:
+        # Try to get product with image_url
+        res = supabase.table("products").select("image_url").eq("sku", sku).execute()
+        if hasattr(res, 'data') and res.data and res.data[0].get('image_url'):
+            return res.data[0]['image_url']
+    except Exception:
+        pass
+    return None
 
 def get_image_path(sku):
+    """Legacy function - checks local files as fallback"""
     for ext in ['.jpg', '.jpeg', '.png', '.JPG', '.PNG']:
         path = f"product-images/{sku}{ext}"
         if os.path.exists(path):
             return path, ext
     return None, None
 
-def has_image(sku):
+def get_storage_image_list():
+    """Get list of all images in Supabase storage (cached in session state)"""
+    # Use session state cache to avoid repeated API calls
+    cache_key = "supabase_storage_files"
+    cache_time_key = "supabase_storage_files_time"
+    
+    import time
+    current_time = time.time()
+    
+    # Check if cache exists and is less than 60 seconds old
+    if cache_key in st.session_state and cache_time_key in st.session_state:
+        if current_time - st.session_state[cache_time_key] < 60:
+            return st.session_state[cache_key]
+    
+    # Fetch fresh data
+    try:
+        supabase = get_authed_supabase()
+        bucket_name = "email-product-pictures"
+        file_list = supabase.storage.from_(bucket_name).list()
+        files = [f['name'] for f in file_list]
+        
+        # Cache the result
+        st.session_state[cache_key] = files
+        st.session_state[cache_time_key] = current_time
+        
+        return files
+    except Exception as e:
+        # Return cached data if available, even if expired
+        if cache_key in st.session_state:
+            return st.session_state[cache_key]
+        return []
+
+def has_image(sku, product_df=None):
+    """Check if product has an image (Supabase storage or local)"""
+    # Check Supabase storage using cached list
+    try:
+        storage_files = get_storage_image_list()
+        for ext in ['.jpg', '.jpeg', '.png', '.JPG', '.PNG']:
+            filename = f"{sku}{ext}"
+            if filename in storage_files:
+                return True
+    except Exception:
+        pass
+    
+    # Check if product has valid image_url in database
+    if product_df is not None:
+        try:
+            match = product_df[product_df["SKU#"] == sku]
+            if not match.empty and 'image_url' in match.columns:
+                image_url = match.iloc[0].get('image_url')
+                if image_url and str(image_url).strip() and str(image_url) not in ['nan', 'None', '', 'null']:
+                    # Verify it's a valid URL
+                    url_str = str(image_url).strip()
+                    if url_str.startswith('http'):
+                        return True
+        except Exception:
+            pass
+    
+    # Fallback to local files
     return get_image_path(sku)[0] is not None
+
+def fetch_image_from_url(url):
+    """Download image from URL and return bytes"""
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return response.content
+    except Exception:
+        pass
+    return None
 
 def load_products_from_supabase():
     """Load products from Supabase and format for email sender compatibility"""
@@ -49,6 +131,10 @@ def load_products_from_supabase():
     for col in required_cols:
         if col not in df.columns:
             df[col] = ""
+    
+    # Keep image_url if it exists
+    if 'image_url' not in df.columns:
+        df['image_url'] = ""
 
     df["Product name"] = df["Product name"].astype(str).str.strip()
     df["Category"] = df["Category"].astype(str).str.strip()
@@ -172,8 +258,16 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                         name = row["Product name"]
                         price = float(row.get("Final Price", 0))
                         count = st.session_state[cart_key].get(sku, 0)
-                        label = f"{name}\n${price:.2f}\nAdded: {count}" if count else f"{name}\n${price:.2f}"
-                        if not has_image(sku): label += "\n(NO IMAGE)"
+                        
+                        # Build label with NO IMAGE indicator
+                        if not has_image(sku, MASTER):
+                            if count:
+                                label = f"{name}\n${price:.2f}\nAdded: {count}\n🚫 NO IMAGE"
+                            else:
+                                label = f"{name}\n${price:.2f}\n🚫 NO IMAGE"
+                        else:
+                            label = f"{name}\n${price:.2f}\nAdded: {count}" if count else f"{name}\n${price:.2f}"
+                        
                         if st.button(label, key=f"add_{sku}_{key_prefix}_{col_idx}_{idx}_{count}", use_container_width=True):
                             st.session_state[cart_key][sku] = count + 1
                             st.rerun()
@@ -194,9 +288,14 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                         st.rerun()
             
             calc_total = sum(sku_to_price.get(s, 0) * q for s, q in st.session_state[cart_key].items())
-            missing = [sku_to_name.get(s, s) for s in st.session_state[cart_key] if not has_image(s)]
+            missing = [sku_to_name.get(s, s) for s in st.session_state[cart_key] if not has_image(s, MASTER)]
             disp_total = order_total if order_total > 0 else calc_total
             st.markdown(f"**Cart:** {sum(st.session_state[cart_key].values())} items • **${disp_total:.2f}**")
+            
+            # Show warning if products missing images
+            if missing:
+                st.error(f"⚠️ **Cannot send email - Missing images for:** {', '.join(missing)}")
+                st.info("💡 Add images in Product Management → Product Images tab")
             
             target_sheet = None
             if allow_inventory_subtraction:
@@ -207,9 +306,11 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
             else:
                 subtract_inv = False
             
-            if st.button("Add to Queue", type="primary", use_container_width=True, key=f"single_add_queue_{key_prefix}"):
+            if st.button("Add to Queue", type="primary", use_container_width=True, key=f"single_add_queue_{key_prefix}", disabled=len(missing) > 0):
                 if not first_name or not email:
                     st.error("First Name + Email required")
+                elif missing:
+                    st.error(f"Cannot add to queue - Missing images for: {', '.join(missing)}")
                 else:
                     # Inventory subtraction happens at SEND time now, to allow batch processing
                     # But we store the intent and target sheet
@@ -265,6 +366,8 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
         with col3:
             if st.button("➕ Add All to Queue", type="primary", key=f"medium_add_{key_prefix}", use_container_width=True):
                 added = 0
+                skipped_missing_images = []
+                
                 for _, row in edited_df.iterrows():
                     fname = str(row.get("First Name", "")).strip()
                     email = str(row.get("Email", "")).strip()
@@ -299,6 +402,12 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                                 cart[sku] = cart.get(sku, 0) + qty
                     
                     if cart:
+                        # Check for missing images
+                        missing = [sku_to_name.get(s, s) for s in cart.keys() if not has_image(s, MASTER)]
+                        if missing:
+                            skipped_missing_images.append(f"{fname} (Order #{onum}): {', '.join(missing)}")
+                            continue
+                        
                         st.session_state.orders.append({
                             "First_Name": fname, "Full_Name": fname, "Email": email,
                             "Order_Number": onum, "Order_Total": ototal, "Cart": cart,
@@ -307,6 +416,13 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                             "target_sheet": target_sheet
                         })
                         added += 1
+                
+                if skipped_missing_images:
+                    st.error(f"⚠️ **Skipped {len(skipped_missing_images)} orders - Missing images:**")
+                    for skip_msg in skipped_missing_images:
+                        st.warning(skip_msg)
+                    st.info("💡 Add images in Product Management → Product Images tab")
+                
                 if added:
                     st.success(f"✅ Added {added} orders to queue!")
                     st.rerun()
@@ -342,6 +458,8 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                     prod_col = col; break
             
             added = 0
+            skipped_missing_images = []
+            
             for _, row in df.iterrows():
                 trans = str(row.get("Transaction No.", "Unknown"))
                 email = str(row.get(email_col, "")).strip()
@@ -373,6 +491,12 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                         cart[sku] = cart.get(sku, 0) + qty
                 
                 if cart:
+                    # Check for missing images
+                    missing = [sku_to_name.get(s, s) for s in cart.keys() if not has_image(s, MASTER)]
+                    if missing:
+                        skipped_missing_images.append(f"{fname} (Order #{trans}): {', '.join(missing)}")
+                        continue
+                    
                     ototal = 0.0
                     try: ototal = float(str(row.get("Order Total", "0")).replace("$","").replace(",",""))
                     except: ototal = sum(sku_to_price.get(s, 0)*q for s,q in cart.items())
@@ -385,6 +509,15 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                         "target_sheet": target_sheet
                     })
                     added += 1
+            
+            if skipped_missing_images:
+                st.error(f"⚠️ **Skipped {len(skipped_missing_images)} orders - Missing images:**")
+                for skip_msg in skipped_missing_images[:10]:  # Show first 10
+                    st.warning(skip_msg)
+                if len(skipped_missing_images) > 10:
+                    st.warning(f"... and {len(skipped_missing_images) - 10} more")
+                st.info("💡 Add images in Product Management → Product Images tab")
+            
             if added > 0:
                 st.success(f"✅ Imported {added} valid orders to queue!")
             else:
@@ -394,12 +527,13 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
 
 def show_email_sender(email_config=None, inv_config=None):
     """Main email sender interface"""
-    st.title("Email Sender")
+    st.title("📧 Email Sender")
+    st.caption("Send automated fulfillment and confirmation emails to customers.")
     
     # Load products from Supabase
     MASTER = load_products_from_supabase()
     if MASTER.empty:
-        st.error("No products found in Supabase. Please add products first.")
+        st.error("No products found. Please add products in Product Management first.")
         return
     
     # Create lookup dictionaries
@@ -407,9 +541,8 @@ def show_email_sender(email_config=None, inv_config=None):
     name_to_sku = {v: k for k, v in sku_to_name.items()}
     sku_to_price = {sku: float(p) for sku, p in zip(MASTER["SKU#"], MASTER["Final Price"])}
     sku_to_category = dict(zip(MASTER["SKU#"], MASTER["Category"]))
-    st.caption("Send automated fulfillment emails.")
 
-    # Global override (recommended): Streamlit secrets / env vars
+    # Get SMTP credentials from environment
     try:
         SENDER_EMAIL = st.secrets.get("SMTP_SENDER_EMAIL")
         APP_PASSWORD = st.secrets.get("SMTP_APP_PASSWORD")
@@ -423,35 +556,25 @@ def show_email_sender(email_config=None, inv_config=None):
     if APP_PASSWORD:
         APP_PASSWORD = re.sub(r"\s+", "", str(APP_PASSWORD))
 
-    # Fallback: user config from My Settings
-    if (not SENDER_EMAIL or not APP_PASSWORD) and email_config:
-        SENDER_EMAIL = SENDER_EMAIL or email_config.get("email")
-
-        password_encrypted = email_config.get("password_encrypted")
-        if password_encrypted:
-            from cryptography.fernet import Fernet
-
-            key_file = "credentials/encryption.key"
-            with open(key_file, 'rb') as f:
-                key = f.read()
-            f = Fernet(key)
-            APP_PASSWORD = APP_PASSWORD or f.decrypt(password_encrypted.encode()).decode()
-        else:
-            APP_PASSWORD = APP_PASSWORD or email_config.get("password")
-
-    if APP_PASSWORD:
-        APP_PASSWORD = re.sub(r"\s+", "", str(APP_PASSWORD))
-
     if not SENDER_EMAIL or not APP_PASSWORD:
-        st.error("❌ Email credentials not configured. Set SMTP_SENDER_EMAIL and SMTP_APP_PASSWORD in Streamlit secrets or environment variables.")
+        st.error("❌ Email credentials not configured. Set SMTP_SENDER_EMAIL and SMTP_APP_PASSWORD in environment variables.")
         return
     
-    if "orders" not in st.session_state: st.session_state.orders = []
+    if "orders" not in st.session_state: 
+        st.session_state.orders = []
     
-    # ====================== AUTOMATED EMAIL SENDER ======================
-    st.subheader("Automated Email Sender")
-    st.caption("**How to use:** Choose an entry method below based on how many orders you need to process.")
+    # Entry tabs
     render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config, "tab1")
+    
+    # Refresh image cache button
+    st.markdown("---")
+    if st.button("🔄 Refresh Image Cache", help="Refresh image availability from Supabase"):
+        if "supabase_storage_files" in st.session_state:
+            del st.session_state["supabase_storage_files"]
+        if "supabase_storage_files_time" in st.session_state:
+            del st.session_state["supabase_storage_files_time"]
+        st.success("Image cache refreshed!")
+        st.rerun()
 
     # ====================== QUEUE & SEND ======================
     if st.session_state.orders:
@@ -472,7 +595,29 @@ def show_email_sender(email_config=None, inv_config=None):
             st.session_state.orders = []
             st.rerun()
         
-        if st.button("SEND ALL EMAILS", type="primary", use_container_width=True):
+        # Check if any orders have products without images
+        orders_with_missing_images = []
+        for order in st.session_state.orders:
+            missing = [sku_to_name.get(s, s) for s in order["Cart"].keys() if not has_image(s, MASTER)]
+            if missing:
+                orders_with_missing_images.append({
+                    "order": order,
+                    "missing": missing
+                })
+        
+        if orders_with_missing_images:
+            st.error(f"⚠️ **Cannot send - {len(orders_with_missing_images)} orders have products without images:**")
+            for item in orders_with_missing_images[:5]:  # Show first 5
+                st.warning(f"Order #{item['order']['Order_Number']} ({item['order']['First_Name']}): {', '.join(item['missing'])}")
+            if len(orders_with_missing_images) > 5:
+                st.warning(f"... and {len(orders_with_missing_images) - 5} more orders")
+            st.info("💡 Remove these orders from queue or add images in Product Management → Product Images tab")
+        
+        if st.button("SEND ALL EMAILS", type="primary", use_container_width=True, disabled=len(orders_with_missing_images) > 0):
+            if orders_with_missing_images:
+                st.error("Cannot send - some orders have products without images. Please fix or remove them from queue.")
+                st.stop()
+            
             server = smtplib.SMTP('smtp.gmail.com', 587)
             server.starttls()
             server.login(SENDER_EMAIL, APP_PASSWORD)
@@ -564,54 +709,42 @@ def show_email_sender(email_config=None, inv_config=None):
                     # --- FULFILLMENT EMAIL (With Images, Thank You) ---
                     msg['Subject'] = f"Thank you for your order #{order['Order_Number']} – Thrive"
                     
-                    html = f"""
-                    <html>
-                    <head>
-                      <style>
-                        body {{ font-family: Helvetica, Arial, sans-serif; color: #333; line-height: 1.7; margin: 0; padding: 20px; background: #f8f9fa; }}
-                        .container {{ max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }}
-                        .header {{ background: #ffffff; padding: 20px; text-align: center; border-bottom: 1px solid #eee; }}
-                        .header img {{ max-height: 80px; }}
-                        .content {{ padding: 40px; }}
-                        .greeting {{ font-size: 24px; margin: 0 0 20px 0; color: #333; font-weight: bold; }}
-                        .name {{ color: #333; font-weight: bold; }}
-                        .order-info {{ background: #e3f2fd; padding: 15px 20px; border-radius: 10px; font-size: 16px; margin: 20px 0; }}
-                        .items {{ background: #e3f2fd; padding: 20px; border-radius: 10px; margin: 25px 0; }}
-                        .item {{ margin: 12px 0; font-size: 16px; color: #333; }}
-                        .blue {{ color: #1E90FF; }}
-                      </style>
-                    </head>
-                    <body>
-                      <div class="container">
-                        <div class="header">
-                          <img src="cid:logo" alt="Thrive Logo">
-                        </div>
-                        <div class="content">
-                          <h2 class="greeting">Hello <span class="name">{order['First_Name']}</span>,</h2>
-                          <p>Thank you for your purchase at <span class="blue">Thrive</span>!</p>
-                          <div class="order-info">
-                            <strong>Order #:</strong> {order['Order_Number']}<br>
-                            <strong>Total:</strong> ${total:.2f}
-                          </div>
-                          <p>Here's what you ordered:</p>
-                          <div class="items">{items_html}</div>
-                          <p>We've attached photos of your exact items below!</p>
-                          <p>Thank you for supporting us,<br>The Thrive Team</p>
-                        </div>
-                      </div>
-                    </body>
-                    </html>
-                    """
+                    # Generate items HTML using the new template function
+                    items_list = []
+                    for sku, qty in cart.items():
+                        name = sku_to_name.get(sku, sku)
+                        price = sku_to_price.get(sku, 0)
+                        items_list.append({"name": name, "price": price, "qty": qty})
+                    
+                    items_html = generate_items_html(items_list)
+                    
+                    # Use the new fulfillment email template
+                    html = get_fulfillment_email_html(order['First_Name'], order['Order_Number'], items_html, total)
                     msg.attach(MIMEText(html, 'html'))
                     
                     # Attach product images ONLY for fulfillment
+                    supabase = get_authed_supabase()
                     for sku in all_skus:
-                        path, ext = get_image_path(sku)
-                        if path:
-                            with open(path, "rb") as f:
-                                img = MIMEImage(f.read())
-                                img.add_header('Content-Disposition', f'attachment; filename="{sku_to_name.get(sku, sku)}{ext}"')
-                                msg.attach(img)
+                        # Try Supabase first
+                        image_url = get_image_url_from_supabase(sku, supabase)
+                        image_data = None
+                        filename = f"{sku_to_name.get(sku, sku)}.jpg"
+                        
+                        if image_url:
+                            image_data = fetch_image_from_url(image_url)
+                        
+                        # Fallback to local files if Supabase fails
+                        if not image_data:
+                            path, ext = get_image_path(sku)
+                            if path:
+                                with open(path, "rb") as f:
+                                    image_data = f.read()
+                                filename = f"{sku_to_name.get(sku, sku)}{ext}"
+                        
+                        if image_data:
+                            img = MIMEImage(image_data)
+                            img.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+                            msg.attach(img)
                 
                 # Attach Logo
                 logo_path = "assets/logo.png"
@@ -637,7 +770,7 @@ def show_email_sender(email_config=None, inv_config=None):
                 except Exception as e:
                     st.error(f"Failed → {order['Email']}: {e}")
                 prog.progress((idx + 1) / len(st.session_state.orders))
-                time.sleep(1)
+                time.sleep(0.75)
             
             server.quit()
             
