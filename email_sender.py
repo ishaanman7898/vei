@@ -549,7 +549,7 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
 
 def show_email_sender(email_config=None, inv_config=None):
     """Main email sender interface"""
-    st.title("📧 Email Sender")
+    st.title("Email Sender")
     st.caption("Send automated fulfillment and confirmation emails to customers.")
     
     # Load products from inventory table (constantly updated with latest data)

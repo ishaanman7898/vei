@@ -582,10 +582,32 @@ def parse_invoice(file, MASTER):
     
     return items
 
+def update_inventory_delta(sku, delta):
+    """Update inventory stock by a delta amount."""
+    try:
+        supabase = get_authed_supabase()
+        res = supabase.table("inventory").select("stock_left").eq("sku", sku).execute()
+        rows = getattr(res, "data", None)
+        if not rows:
+            return False, "Product not found"
+        
+        current_left = rows[0].get("stock_left", 0)
+        new_left = current_left + delta
+        status = _inventory_status_from_stock_left(new_left)
+        
+        supabase.table("inventory").update({
+            "stock_left": new_left,
+            "status": status
+        }).eq("sku", sku).execute()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
 def show_inventory_management():
     """Show inventory management interface with Supabase inventory"""
-    st.title("📦 Inventory Management")
-    st.caption("Track stock levels, upload invoices, and manage inventory.")
+   
+    st.title("Inventory Management")
+    st.caption("Track stock levels, adjust inventory, and view summaries.")
 
     MASTER = load_master()
     if MASTER.empty:
@@ -630,264 +652,137 @@ def show_inventory_management():
     # Auto-sync happens via database triggers - no manual sync needed
     st.caption("💡 Products and images sync automatically from the products table")
 
-    if not summary_df.empty:
-        st.subheader("Inventory Summary")
-        st.dataframe(summary_df, use_container_width=True, hide_index=True)
-
-    st.subheader("Current Inventory")
-    
-    # Check for missing images
-    if not inv_df.empty and "image_url" in inv_df.columns:
-        missing_images = inv_df[(inv_df["image_url"] == "N/A") | (inv_df["image_url"].isna())]
-        if not missing_images.empty:
-            st.warning(f"⚠️ {len(missing_images)} products missing images. Upload images in Product Management → Images tab.")
-            with st.expander("View products missing images"):
-                st.dataframe(missing_images[["sku", "item_name", "image_url"]], use_container_width=True, hide_index=True)
-    
-    if inv_df.empty:
-        st.warning("Inventory table is empty. Add products (auto-sync trigger) or run SELECT sync_all_products_to_inventory();")
-    else:
-        inv_df = inv_df.copy()
-        for col in ["stock_bought", "stock_left"]:
-            if col in inv_df.columns:
-                inv_df[col] = pd.to_numeric(inv_df[col], errors="coerce").fillna(0).astype(int)
-
-        disabled_cols = [c for c in ["id", "created_at", "updated_at", "created_by"] if c in inv_df.columns]
-        edited_inventory = st.data_editor(
-            inv_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            disabled=disabled_cols,
-            key="inventory_editor",
-        )
-
-        if st.button("💾 Save Inventory Changes", type="primary"):
-            supabase = get_authed_supabase()
-            payload_rows = []
-            for _, r in edited_inventory.iterrows():
-                sku = str(r.get("sku", "")).strip()
-                item_name = str(r.get("item_name", "")).strip()
-                if not sku or not item_name:
-                    continue
-                stock_bought = _safe_int(r.get("stock_bought", 0), 0)
-                stock_left = _safe_int(r.get("stock_left", 0), 0)
-                status = str(r.get("status", "")).strip() or _inventory_status_from_stock_left(stock_left)
-                payload_rows.append({
-                    "sku": sku,
-                    "item_name": item_name,
-                    "stock_bought": stock_bought,
-                    "stock_left": stock_left,
-                    "status": status,
-                    "last_updated_from_invoice": (str(r.get("last_updated_from_invoice", "")).strip() or None),
-                    "invoice_date": (str(r.get("invoice_date", "")).strip() or None),
-                    "due_date": (str(r.get("due_date", "")).strip() or None),
-                })
-            try:
-                if payload_rows:
-                    supabase.table("inventory").upsert(payload_rows, on_conflict="sku").execute()
-                st.success("Inventory saved to Supabase.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to save inventory: {e}")
-
     # Tabs for actions
-    inv_tab1, inv_tab2 = st.tabs(["Inventory Update (Invoices)", "Old Inventory Push (Historical)"])
+    tab_adjust, tab_summary, tab_current = st.tabs([
+        "Quick Adjust (+/-)", 
+        "Inventory Summary", 
+        "Full Inventory Table"
+    ])
     
-    # ====================== INVENTORY UPDATE (INVOICES) ======================
-    with inv_tab1:
-        st.markdown("### 📄 Update from Invoices")
-        st.caption("Upload PDF or CSV invoices to **add** to your stock.")
+    # 1. Quick Adjust Tab
+    with tab_adjust:
+        st.subheader("Quick Adjust Inventory")
+        st.caption("Increment or decrement stock levels by any amount.")
         
-        uploaded = st.file_uploader("Upload invoice files", type=["pdf","csv"], accept_multiple_files=True, key="inv_upload")
+        search_query = st.text_input("🔍 Search Product (Name or SKU)", "")
         
-        if uploaded:
-            all_items = {}
-            with st.expander("Processing Details", expanded=False):
-                for f in uploaded:
-                    st.write(f"**{f.name}**")
-                    items = parse_invoice(f, MASTER)
-                    st.write(items)
-                    for name, item_data in items.items():
-                        # Normalize item_data length
-                        if len(item_data) == 6: qty, inv, unit_price, total_amount, inv_date, due_date = item_data
-                        elif len(item_data) == 4: qty, inv, unit_price, total_amount = item_data; inv_date=None; due_date=None
-                        else: qty, inv = item_data; unit_price=None; total_amount=None; inv_date=None; due_date=None
-                        
-                        if name in all_items:
-                            old_data = all_items[name]
-                            old_qty = old_data[0]
-                            all_items[name] = (old_qty + qty, f"{old_data[1]} | {inv}", unit_price or old_data[2], total_amount, inv_date or old_data[4], due_date or old_data[5])
-                        else:
-                            all_items[name] = (qty, inv, unit_price, total_amount, inv_date, due_date)
+        if inv_df.empty:
+            st.info("No inventory to adjust.")
+        else:
+            # Prepare display dataframe
+            df_display = inv_df.copy()
+            if search_query:
+                mask = (
+                    df_display["item_name"].astype(str).str.contains(search_query, case=False, na=False) | 
+                    df_display["sku"].astype(str).str.contains(search_query, case=False, na=False)
+                )
+                df_display = df_display[mask]
             
-            if all_items:
-                total_qty = sum(d[0] for d in all_items.values())
-                st.success(f"Found {total_qty:,} items!")
+            # Sort by name
+            if "item_name" in df_display.columns:
+                df_display = df_display.sort_values("item_name")
+            
+            # Display rows
+            st.markdown("---")
+            h1, h2, h3 = st.columns([3, 1, 2])
+            h1.markdown("**Product**")
+            h2.markdown("**Left**")
+            h3.markdown("**Adjust Amount**")
+            
+            # Limit display
+            MAX_ITEMS = 60
+            if len(df_display) > MAX_ITEMS and not search_query:
+                st.warning(f"Showing first {MAX_ITEMS} items. Use search to find specific products.")
+                df_display = df_display.head(MAX_ITEMS)
                 
-                preview = []
-                for name, d in all_items.items():
-                    preview.append({
-                        "Product": name, "Qty": d[0], "Invoice": d[1], 
-                        "Date": d[4] if d[4] else "N/A"
+            for idx, row in df_display.iterrows():
+                sku = str(row.get("sku", ""))
+                name = row.get("item_name", "Unknown")
+                stock = int(float(str(row.get("stock_left", 0)).replace(",", "") or 0))
+                
+                with st.container():
+                    c1, c2, c3 = st.columns([3, 1, 2])
+                    c1.write(f"**{name}**\n`{sku}`")
+                    c2.write(f"**{stock}**")
+                    
+                    # Dynamic adjustment
+                    with c3:
+                        adj_c1, adj_c2, adj_c3 = st.columns([2, 1, 1])
+                        amount = adj_c1.number_input("Amount", min_value=1, step=1, value=1, key=f"amt_{sku}", label_visibility="collapsed")
+                        
+                        if adj_c2.button("➖", key=f"dec_{sku}", help=f"Decrease by {amount}"):
+                            success, msg = update_inventory_delta(sku, -amount)
+                            if success: st.rerun()
+                            else: st.error(msg)
+                            
+                        if adj_c3.button("➕", key=f"inc_{sku}", help=f"Increase by {amount}"):
+                            success, msg = update_inventory_delta(sku, amount)
+                            if success: st.rerun()
+                            else: st.error(msg)
+                        
+                    st.markdown("---")
+
+    # 2. Inventory Summary Tab
+    with tab_summary:
+        st.subheader("Inventory Summary")
+        if not summary_df.empty:
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No summary data available.")
+
+    # 3. Full Inventory Table
+    with tab_current:
+        st.subheader("Current Inventory Table")
+        # Check for missing images
+        if not inv_df.empty and "image_url" in inv_df.columns:
+            missing_images = inv_df[(inv_df["image_url"] == "N/A") | (inv_df["image_url"].isna())]
+            if not missing_images.empty:
+                st.warning(f"⚠️ {len(missing_images)} products missing images. Upload images in Product Management → Images tab.")
+                with st.expander("View products missing images"):
+                    st.dataframe(missing_images[["sku", "item_name", "image_url"]], use_container_width=True, hide_index=True)
+        
+        if inv_df.empty:
+            st.warning("Inventory table is empty. Add products to get started.")
+        else:
+            inv_df = inv_df.copy()
+            for col in ["stock_bought", "stock_left"]:
+                if col in inv_df.columns:
+                    inv_df[col] = pd.to_numeric(inv_df[col], errors="coerce").fillna(0).astype(int)
+
+            disabled_cols = [c for c in ["id", "created_at", "updated_at", "created_by"] if c in inv_df.columns]
+            edited_inventory = st.data_editor(
+                inv_df,
+                num_rows="dynamic",
+                use_container_width=True,
+                disabled=disabled_cols,
+                key="inventory_editor",
+            )
+
+            if st.button("💾 Save Bulk Changes", type="primary"):
+                supabase = get_authed_supabase()
+                payload_rows = []
+                for _, r in edited_inventory.iterrows():
+                    sku = str(r.get("sku", "")).strip()
+                    item_name = str(r.get("item_name", "")).strip()
+                    if not sku or not item_name:
+                        continue
+                    stock_bought = _safe_int(r.get("stock_bought", 0), 0)
+                    stock_left = _safe_int(r.get("stock_left", 0), 0)
+                    status = str(r.get("status", "")).strip() or _inventory_status_from_stock_left(stock_left)
+                    payload_rows.append({
+                        "sku": sku,
+                        "item_name": item_name,
+                        "stock_bought": stock_bought,
+                        "stock_left": stock_left,
+                        "status": status,
+                        "last_updated_from_invoice": (str(r.get("last_updated_from_invoice", "")).strip() or None),
+                        "invoice_date": (str(r.get("invoice_date", "")).strip() or None),
+                        "due_date": (str(r.get("due_date", "")).strip() or None),
                     })
-                st.dataframe(pd.DataFrame(preview), use_container_width=True)
-                
-                if st.button("Apply Invoice Updates", type="primary", use_container_width=True):
-                    with st.spinner("Updating Supabase inventory..."):
-                        try:
-                            supabase = get_authed_supabase()
-                            current_inv = load_inventory()
-                            if not current_inv.empty:
-                                current_inv = current_inv.copy()
-                                current_inv["sku"] = current_inv["sku"].astype(str).str.strip()
-                                current_inv["item_name"] = current_inv["item_name"].astype(str).str.strip()
-
-                            master_name_to_sku = dict(zip(MASTER["Product name"].astype(str), MASTER["SKU#"].astype(str)))
-                            inv_name_to_sku = {}
-                            if not current_inv.empty and "item_name" in current_inv.columns and "sku" in current_inv.columns:
-                                inv_name_to_sku = dict(zip(current_inv["item_name"], current_inv["sku"]))
-
-                            for name, item_data in all_items.items():
-                                qty = int(item_data[0])
-                                inv = str(item_data[1])
-                                inv_date = item_data[4]
-                                due_date = item_data[5]
-
-                                sku = str(master_name_to_sku.get(name) or inv_name_to_sku.get(name) or "").strip()
-                                if not sku:
-                                    st.warning(f"Skipping '{name}' (no matching SKU). Add product first, then re-run.")
-                                    continue
-
-                                existing = None
-                                if not current_inv.empty:
-                                    m = current_inv[current_inv["sku"] == sku]
-                                    if not m.empty:
-                                        existing = m.iloc[0]
-
-                                existing_bought = _safe_int(existing.get("stock_bought"), 0) if existing is not None else 0
-                                existing_left = _safe_int(existing.get("stock_left"), 0) if existing is not None else 0
-
-                                new_bought = existing_bought + qty
-                                new_left = existing_left + qty
-                                status = _inventory_status_from_stock_left(new_left)
-
-                                old_inv = str(existing.get("last_updated_from_invoice", "")).strip() if existing is not None else ""
-                                merged_inv = inv if not old_inv or old_inv == "nan" else f"{old_inv} | {inv}"
-
-                                payload = {
-                                    "sku": sku,
-                                    "item_name": str(name).strip(),
-                                    "stock_bought": new_bought,
-                                    "stock_left": new_left,
-                                    "status": status,
-                                    "last_updated_from_invoice": merged_inv,
-                                    "invoice_date": inv_date if inv_date else None,
-                                    "due_date": due_date if due_date else None,
-                                }
-                                supabase.table("inventory").upsert(payload, on_conflict="sku").execute()
-
-                            st.success("Inventory updated in Supabase.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Failed to update inventory in Supabase: {e}")
-
-    # ====================== OLD INVENTORY PUSH ======================
-    with inv_tab2:
-        st.markdown("### 🕰️ Old Inventory Push")
-        st.caption("Upload sales history CSV to **subtract** from your stock.")
-        
-        hist_upload = st.file_uploader("Upload sales history CSV", type=["csv"], key="hist_upload")
-        
-        if hist_upload:
-            try:
-                hist_df = pd.read_csv(hist_upload)
-                st.dataframe(hist_df.head(), use_container_width=True)
-                
-                combined_col = None
-                for c in hist_df.columns:
-                    if "product(s) ordered & quantity" in c.lower():
-                        combined_col = c; break
-                
-                sales_summary = {}
-                process = False
-                
-                if combined_col:
-                    st.info(f"✅ Detected combined column: **{combined_col}**")
-                    if st.button("Process & Subtract", type="primary"):
-                        process = True
-                        master_products = sorted(MASTER["Product name"].tolist(), key=len, reverse=True)
-                        for _, row in hist_df.iterrows():
-                            cell_val = str(row[combined_col])
-                            if pd.isna(cell_val) or cell_val == "nan": continue
-                            temp_val = cell_val
-                            for prod_name in master_products:
-                                pattern = re.escape(prod_name) + r'(?:\s*[x×]\s*(\d+))?'
-                                matches = list(re.finditer(pattern, temp_val, re.IGNORECASE))
-                                for match in matches:
-                                    qty = int(match.group(1)) if match.group(1) else 1
-                                    sales_summary[prod_name] = sales_summary.get(prod_name, 0) + qty
-                                if matches: temp_val = re.sub(pattern, '', temp_val, flags=re.IGNORECASE)
-                else:
-                    st.markdown("#### Map Columns")
-                    cols = hist_df.columns.tolist()
-                    c1, c2 = st.columns(2)
-                    with c1: prod_col = st.selectbox("Product Name Column", cols)
-                    with c2: qty_col = st.selectbox("Quantity Column", cols)
-                    if st.button("Process & Subtract", type="primary"):
-                        process = True
-                        sales_summary = hist_df.groupby(prod_col)[qty_col].sum().to_dict()
-
-                if process:
-                    with st.spinner("Processing..."):
-                        try:
-                            supabase = get_authed_supabase()
-                            current_inv = load_inventory()
-                            if current_inv.empty:
-                                st.error("Inventory table is empty; cannot subtract sales.")
-                                return
-
-                            current_inv = current_inv.copy()
-                            current_inv["sku"] = current_inv["sku"].astype(str).str.strip()
-                            current_inv["item_name"] = current_inv["item_name"].astype(str).str.strip()
-
-                            master_name_to_sku = dict(zip(MASTER["Product name"].astype(str), MASTER["SKU#"].astype(str)))
-                            inv_name_to_sku = dict(zip(current_inv["item_name"], current_inv["sku"]))
-
-                            updates = 0
-                            for prod_name, qty_sold in sales_summary.items():
-                                if not prod_name or pd.isna(prod_name):
-                                    continue
-                                qty_sold = int(qty_sold)
-                                if qty_sold <= 0:
-                                    continue
-
-                                sku = str(master_name_to_sku.get(prod_name) or inv_name_to_sku.get(prod_name) or "").strip()
-                                if not sku:
-                                    continue
-
-                                m = current_inv[current_inv["sku"] == sku]
-                                if m.empty:
-                                    continue
-                                existing = m.iloc[0]
-                                existing_left = _safe_int(existing.get("stock_left"), 0)
-                                new_left = existing_left - qty_sold
-                                status = _inventory_status_from_stock_left(new_left)
-
-                                supabase.table("inventory").upsert({
-                                    "sku": sku,
-                                    "item_name": str(existing.get("item_name", prod_name)).strip() or str(prod_name).strip(),
-                                    "stock_bought": _safe_int(existing.get("stock_bought"), 0),
-                                    "stock_left": new_left,
-                                    "status": status,
-                                    "last_updated_from_invoice": (str(existing.get("last_updated_from_invoice", "")).strip() or None),
-                                    "invoice_date": (str(existing.get("invoice_date", "")).strip() or None),
-                                    "due_date": (str(existing.get("due_date", "")).strip() or None),
-                                }, on_conflict="sku").execute()
-                                updates += 1
-
-                            st.success(f"✅ Updated inventory in Supabase! Subtracted sales for {updates} products.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error updating inventory in Supabase: {e}")
-            except Exception as e:
-                st.error(f"Error: {e}")
+                try:
+                    if payload_rows:
+                        supabase.table("inventory").upsert(payload_rows, on_conflict="sku").execute()
+                    st.success("Inventory updated.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to save inventory: {e}")

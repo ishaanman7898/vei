@@ -157,101 +157,24 @@ def upsert_product_image_url(sku: str, image_url: str):
         st.warning(f"Image saved locally but failed to update Supabase image_url: {e}")
 
 def show_product_management():
-    st.title("🛠️ Tools")
+    """Main function for product management interface"""
+    st.image("Thrive.png", width=60)
+    st.title("Products")
     st.caption("Utilities for data management and processing.")
 
-    # Product Merger Tool
-    st.markdown("### 🔀 Product Merger")
-    st.caption("Merge Orders CSV and Items CSV into a consolidated format.")
+    # Load current product data
+    df = load_pwp()
     
-    c1, c2 = st.columns(2)
-    with c1:
-        orders_file = st.file_uploader("Upload Orders CSV", type=["csv"], help="Contains billing/shipping info")
-    with c2:
-        items_file = st.file_uploader("Upload Items CSV", type=["csv"], help="Contains item details")
-        
-    if orders_file and items_file:
-        if st.button("Merge Files", type="primary"):
-            try:
-                # Read CSVs
-                df_orders = pd.read_csv(orders_file)
-                df_items = pd.read_csv(items_file)
-                
-                # Normalize columns (strip whitespace)
-                df_orders.columns = df_orders.columns.str.strip()
-                df_items.columns = df_items.columns.str.strip()
-                
-                # Check for required join column
-                join_col = "Transaction no"
-                if join_col not in df_orders.columns:
-                    st.error(f"Orders CSV missing '{join_col}' column")
-                    st.stop()
-                if join_col not in df_items.columns:
-                    st.error(f"Items CSV missing '{join_col}' column")
-                    st.stop()
-                    
-                # Process Items: Aggregate items per transaction
-                # Expected format: "Product A x 2, Product B x 1"
-                
-                # Ensure quantity is numeric
-                if "Quantity" in df_items.columns:
-                    df_items["Quantity"] = pd.to_numeric(df_items["Quantity"], errors='coerce').fillna(1).astype(int)
-                else:
-                    df_items["Quantity"] = 1
-                    
-                # Create formatted item string "Name" or "Name x Qty"
-                df_items["Formatted_Item"] = df_items.apply(
-                    lambda x: (f"{x['Item name']}" if x['Quantity'] == 1 else f"{x['Item name']} x {x['Quantity']}") if pd.notna(x.get('Item name')) else "", axis=1
-                )
-                
-                # Group by Transaction no and join items with double space
-                items_agg = df_items.groupby(join_col)["Formatted_Item"].apply(lambda x: "  ".join(filter(None, x))).reset_index()
-                items_agg.rename(columns={"Formatted_Item": "Product(s) Ordered & Quantity"}, inplace=True)
-                
-                # Merge Orders with Aggregated Items
-                merged_df = pd.merge(df_orders, items_agg, on=join_col, how="left")
-                
-                # Create final dataframe with specific columns
-                final_df = pd.DataFrame()
-                
-                # Map columns
-                final_df["Web or Booth"] = "Website"
-                final_df["Transaction No."] = merged_df[join_col]
-                final_df["Purchase Date"] = merged_df.get("Date", "N/A")
-                final_df["Customer Name"] = merged_df.get("Billing name", "N/A")
-                final_df["Company"] = merged_df.get("Billing company", "N/A")
-                final_df["City"] = merged_df.get("Billing city", "N/A")
-                final_df["State"] = merged_df.get("Billing state/province", "N/A")
-                final_df["Customer E-Mail"] = merged_df.get("Customer email", "N/A")
-                final_df["Product(s) Ordered & Quantity"] = merged_df.get("Product(s) Ordered & Quantity", "N/A")
-                final_df["Order Subtotal"] = merged_df.get("Subtotal", "N/A")
-                final_df["Discount Applied"] = merged_df.get("Discount", "N/A")
-                final_df["Shipping"] = merged_df.get("Shipping", "N/A")
-                final_df["Tax"] = merged_df.get("Tax", "N/A")
-                final_df["Order Total"] = merged_df.get("Total", "N/A")
-                final_df["Shipping Status"] = "N/A"
-                
-                # Fill NaN with "N/A"
-                final_df = final_df.fillna("N/A")
-                
-                st.success("✅ Files merged successfully!")
-                st.dataframe(final_df)
-                
-                # Convert to CSV
-                csv = final_df.to_csv(index=False).encode('utf-8')
-                
-                st.download_button(
-                    label="Download Merged CSV",
-                    data=csv,
-                    file_name="merged_products.csv",
-                    mime="text/csv",
-                    type="primary"
-                )
-                
-            except Exception as e:
-                st.error(f"Error merging files: {str(e)}")
+    # Initialize tabs
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "View & Edit Catalog", 
+        "Add New Product", 
+        "Product Images",
+        "Product Merger"
+    ])
+    
+    # Redundant merger code was here, now moved successfully to tab4 structure below.
 
-    # --- VIEW & EDIT ---
     with tab1:
         st.subheader("Current Product Catalog")
         st.info("💡 Edit cells directly below and click 'Save Changes' to update Supabase")

@@ -14,7 +14,7 @@ from email_templates import show_email_test_interface
 st.set_page_config(
     page_title="Thrive Tools", 
     layout="wide", 
-    page_icon="❄️",
+    page_icon="Thrive.png",
     initial_sidebar_state="expanded"
 )
 
@@ -89,20 +89,21 @@ user_name = current_user.get('name', current_user.get('email', 'User'))
 # Sidebar
 with st.sidebar:
     # Logo/Title
-    st.markdown("## ❄️ Thrive Tools")
+    st.image("Thrive.png", width=100)
+    st.markdown("## Thrive Tools")
     st.caption(f"👤 {user_name}")
     st.markdown("---")
     
     # Build menu options based on permissions
     menu_options = []
     if check_permission("inventory_management"):
-        menu_options.append("📦 Inventory")
+        menu_options.append("Inventory")
     if check_permission("email_sender"):
-        menu_options.append("📧 Email Sender")
+        menu_options.append("Email Sender")
     if check_permission("product_management"):
-        menu_options.append("🏷️ Products")
+        menu_options.append("Products")
     
-    if len(menu_options) <= 1:
+    if len(menu_options) <= 0:
         st.error("No module access. Contact admin.")
         st.stop()
     
@@ -112,7 +113,7 @@ with st.sidebar:
     st.markdown("---")
     
     # Logout button at bottom
-    if st.button("🚪 Logout", use_container_width=True):
+    if st.button("Logout", use_container_width=True):
         # Clear session file
         if current_user and current_user.get('email'):
             email_hash = hashlib.md5(current_user['email'].encode()).hexdigest()
@@ -129,20 +130,20 @@ with st.sidebar:
         st.rerun()
 
 # Main content area
-if tool == "📦 Inventory":
+if tool == "Inventory":
     if check_permission("inventory_management"):
         show_inventory_management()
     else:
-        st.error("❌ Access Denied")
+        st.error("Access Denied")
 
-elif tool == "📧 Email Sender":
+elif tool == "Email Sender":
     if check_permission("email_sender"):
         show_email_sender()
     else:
-        st.error("❌ Access Denied")
+        st.error("Access Denied")
 
-elif tool == "🏷️ Products":
+elif tool == "Products":
     if check_permission("product_management"):
         show_product_management()
     else:
-        st.error("❌ Access Denied")
+        st.error("Access Denied")
