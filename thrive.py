@@ -137,16 +137,6 @@ with st.sidebar:
     # Logout button at bottom
     st.markdown("---")
     if st.button("Logout", use_container_width=True):
-        # Clear session file
-        if current_user and current_user.get('email'):
-            email_hash = hashlib.md5(current_user['email'].encode()).hexdigest()
-            session_file = f"credentials/sessions/{email_hash}.json"
-            if os.path.exists(session_file):
-                try:
-                    os.remove(session_file)
-                except:
-                    pass
-        
         # Clear all session state
         for key in list(st.session_state.keys()):
             del st.session_state[key]
