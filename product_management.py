@@ -6,6 +6,7 @@ import json
 
 from supabase_client import get_authed_supabase, get_current_supabase_user_id
 
+@st.cache_data(ttl=600)
 def load_pwp():
     expected_columns = [
         "id",
@@ -227,36 +228,6 @@ def show_product_management():
     with tab2:
         st.subheader("Add New Product")
         
-        # Specifications editor outside the form (st.button not allowed in st.form)
-        specs_key = "new_product_specs_editor"
-        if specs_key not in st.session_state:
-            st.session_state[specs_key] = pd.DataFrame({
-                "Specification name (e.g., capacity, material)": [""],
-                "Value (e.g., 40 oz, Stainless Steel)": [""],
-            })
-
-        st.markdown("**Specifications:**")
-        specs_df = st.data_editor(
-            st.session_state[specs_key],
-            num_rows="dynamic",
-            use_container_width=True,
-            key="new_specs_table"
-        )
-        st.session_state[specs_key] = specs_df
-
-        if st.button("Add Specification", key="add_spec_row"):
-            st.session_state[specs_key] = pd.concat(
-                [
-                    st.session_state[specs_key],
-                    pd.DataFrame({
-                        "Specification name (e.g., capacity, material)": [""],
-                        "Value (e.g., 40 oz, Stainless Steel)": [""],
-                    })
-                ],
-                ignore_index=True
-            )
-            st.rerun()
-
         with st.form("add_product_form"):
             c1, c2 = st.columns(2)
             with c1:
@@ -296,202 +267,153 @@ def show_product_management():
                     help="URL for the buy button")
 
                 uploaded_image = st.file_uploader("Product Image", type=['png', 'jpg', 'jpeg'])
-            
-            submitted = st.form_submit_button("Add Product", type="primary")
-            
-            if submitted:
-                if not new_name or not new_sku:
-                    st.error("Product Name and SKU are required!")
-                else:
-                    # Check if SKU already exists
-                    if "sku" in df.columns and str(new_sku).strip() in df["sku"].astype(str).values:
-                        st.error(f"SKU '{new_sku}' already exists!")
-                    else:
-                        user_id = get_current_supabase_user_id()
-                        image_url = None
 
-                        specs_val = {}
-                        for _, r in st.session_state[specs_key].iterrows():
-                            k = str(r.get("Specification name (e.g., capacity, material)", "")).strip()
-                            v = str(r.get("Value (e.g., 40 oz, Stainless Steel)", "")).strip()
-                            if k:
-                                specs_val[k] = v
-                        
-                        # Save Image to Supabase
-                        if uploaded_image:
-                            try:
-                                from PIL import Image
-                                import io
-                                
-                                # Compress image
-                                img = Image.open(uploaded_image)
-                                
-                                # Convert RGBA to RGB if needed
-                                if img.mode == 'RGBA':
-                                    background = Image.new('RGB', img.size, (255, 255, 255))
-                                    background.paste(img, mask=img.split()[3])
-                                    img = background
-                                
-                                # Resize if too large
-                                max_width = 800
-                                if img.width > max_width:
-                                    ratio = max_width / img.width
-                                    new_height = int(img.height * ratio)
-                                    img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-                                
-                                # Compress to bytes
+            submitted = st.form_submit_button("Add Product", type="primary")
+
+        # Specifications editor moved outside the form
+        st.markdown("---")
+        st.markdown("**Product Specifications**")
+        specs_key = "new_product_specs_editor"
+        if specs_key not in st.session_state:
+            st.session_state[specs_key] = pd.DataFrame({
+                "Specification name (e.g., capacity, material)": [""],
+                "Value (e.g., 40 oz, Stainless Steel)": [""],
+            })
+        
+        specs_df = st.data_editor(
+            st.session_state[specs_key],
+            num_rows="dynamic",
+            use_container_width=True,
+            key="new_specs_table"
+        )
+        st.session_state[specs_key] = specs_df
+        
+        if st.button("Add Specification Row", key="add_spec_row_btm"):
+            st.session_state[specs_key] = pd.concat(
+                [pd.DataFrame({"Specification name (e.g., capacity, material)": [""], "Value (e.g., 40 oz, Stainless Steel)": [""]})],
+                ignore_index=True
+            )
+            st.rerun()
+            
+        if submitted:
+            if not new_name or not new_sku:
+                st.error("Product Name and SKU are required!")
+            else:
+                # Check if SKU already exists
+                if "sku" in df.columns and str(new_sku).strip() in df["sku"].astype(str).values:
+                    st.error(f"SKU '{new_sku}' already exists!")
+                else:
+                    user_id = get_current_supabase_user_id()
+                    image_url = None
+
+                    specs_val = {}
+                    for _, r in st.session_state[specs_key].iterrows():
+                        k = str(r.get("Specification name (e.g., capacity, material)", "")).strip()
+                        v = str(r.get("Value (e.g., 40 oz, Stainless Steel)", "")).strip()
+                        if k:
+                            specs_val[k] = v
+                            
+                    # Save Image to Supabase
+                    if uploaded_image:
+                        try:
+                            from PIL import Image
+                            import io
+                            
+                            # Compress image
+                            img = Image.open(uploaded_image)
+                            
+                            # Convert RGBA to RGB if needed
+                            if img.mode == 'RGBA':
+                                background = Image.new('RGB', img.size, (255, 255, 255))
+                                background.paste(img, mask=img.split()[3])
+                                img = background
+                            
+                            # Resize and compress to stay under 100KB
+                            quality = 85
+                            max_width = 800
+                            if img.width > max_width:
+                                ratio = max_width / img.width
+                                new_height = int(img.height * ratio)
+                                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                            
+                            # Iterative compression to target < 100KB
+                            compressed_data = None
+                            for q in range(85, 20, -10):
                                 output = io.BytesIO()
-                                img.save(output, format='JPEG', quality=85, optimize=True)
+                                img.save(output, format='JPEG', quality=q, optimize=True)
                                 compressed_data = output.getvalue()
-                                
-                                # Upload to Supabase
-                                bucket_name = "email-product-pictures"
-                                filename = f"{new_sku}.jpg"
-                                
-                                result = supabase.storage.from_(bucket_name).upload(
+                                if len(compressed_data) < 100 * 1024:
+                                    break
+                            
+                            # Upload to Supabase
+                            bucket_name = "email-product-pictures"
+                            filename = f"{new_sku}.jpg"
+                            
+                            try:
+                                supabase = get_authed_supabase()
+                                supabase.storage.from_(bucket_name).upload(
                                     path=filename,
                                     file=compressed_data,
                                     file_options={"content-type": "image/jpeg", "upsert": "true"}
                                 )
-                                
-                                # Get public URL
                                 image_url = supabase.storage.from_(bucket_name).get_public_url(filename)
-                                st.info(f"✅ Image uploaded and compressed to Supabase")
-                                
+                                st.info(f"✅ Image uploaded and compressed ({len(compressed_data)//1024}KB)")
                             except Exception as e:
                                 st.warning(f"Image upload failed: {e}. Product will be created without image.")
                                 image_url = None
-
-                        payload = {
-                            "sku": str(new_sku).strip(),
-                            "name": str(new_name).strip(),
-                            "category": str(new_category).strip() or None,
-                            "status": str(new_status).strip() or None,
-                            "price": float(new_final_price) if new_final_price is not None else None,
-                            "buy_link": str(new_buy_link).strip() or None,
-                            "description": str(new_description).strip() or None,
-                            "group_name": str(new_group_name).strip() or None,
-                            "color": str(new_color).strip() or None,
-                            "hex_color": str(new_hex_color).strip() or None,
-                            "created_by": user_id,
-                            "specifications": specs_val,
-                        }
-                        if image_url:
-                            payload["image_url"] = image_url
-
-                        try:
-                            supabase = get_authed_supabase()
-                            supabase.table("products").insert(payload).execute()
                         except Exception as e:
-                            st.error(f"Failed to add product to Supabase: {e}")
-                            return
-                        
-                        # Show detailed confirmation
-                        st.success(f"✅ Successfully added '{new_name}' to Supabase!")
-                        st.cache_data.clear()
-                        
-                        # Clear form by deleting the form-related session state
-                        if "add_product_form" in st.session_state:
-                            del st.session_state["add_product_form"]
-                        
-                        st.rerun()
+                            st.warning(f"Image processing failed: {e}. Product will be created without image.")
+                            image_url = None
+
+                    # Create product payload
+                    payload = {
+                        "sku": str(new_sku).strip(),
+                        "name": str(new_name).strip(),
+                        "category": str(new_category).strip() or None,
+                        "status": str(new_status).strip() or None,
+                        "price": float(new_final_price) if new_final_price is not None else None,
+                        "buy_link": str(new_buy_link).strip() or None,
+                        "description": str(new_description).strip() or None,
+                        "group_name": str(new_group_name).strip() or None,
+                        "color": str(new_color).strip() or None,
+                        "hex_color": str(new_hex_color).strip() or None,
+                        "created_by": user_id,
+                        "specifications": specs_val,
+                    }
+                    if image_url:
+                        payload["image_url"] = image_url
+
+                    try:
+                        supabase = get_authed_supabase()
+                        supabase.table("products").insert(payload).execute()
+                    except Exception as e:
+                        st.error(f"Failed to add product to Supabase: {e}")
+                        return
+                    
+                    # Show detailed confirmation
+                    st.success(f"✅ Successfully added '{new_name}' to Supabase!")
+                    st.cache_data.clear()
+                    
+                    # Clear form by deleting the form-related session state
+                    if "add_product_form" in st.session_state:
+                        del st.session_state["add_product_form"]
+                    
+                    st.rerun()
 
     # --- PRODUCT IMAGES ---
     with tab3:
-        st.subheader("Product Images Manager")
-        st.caption("Upload and manage product images in Supabase Storage")
-        
-        # Image upload section
-        st.markdown("### Upload New Image")
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            # Get list of SKUs for dropdown
-            sku_list = sorted([str(s).strip() for s in df["sku"].dropna().unique() if str(s).strip()])
-            selected_sku = st.selectbox("Select Product SKU", options=sku_list, key="image_upload_sku")
-            
-            uploaded_file = st.file_uploader(
-                "Choose product image",
-                type=['png', 'jpg', 'jpeg'],
-                help="Image will be compressed and uploaded to Supabase",
-                key="product_image_uploader"
-            )
-        
-        with col2:
-            st.markdown("**Compression Settings**")
-            max_width = st.number_input("Max Width (px)", min_value=400, max_value=2000, value=800, step=100)
-            quality = st.slider("JPEG Quality", min_value=60, max_value=100, value=85, step=5)
-        
-        if uploaded_file and selected_sku:
-            if st.button("📤 Upload & Compress Image", type="primary"):
-                try:
-                    from PIL import Image
-                    import io
-                    
-                    # Compress image
-                    img = Image.open(uploaded_file)
-                    
-                    # Convert RGBA to RGB if needed
-                    if img.mode == 'RGBA':
-                        background = Image.new('RGB', img.size, (255, 255, 255))
-                        background.paste(img, mask=img.split()[3])
-                        img = background
-                    
-                    # Resize if too large
-                    if img.width > max_width:
-                        ratio = max_width / img.width
-                        new_height = int(img.height * ratio)
-                        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-                    
-                    # Compress to bytes
-                    output = io.BytesIO()
-                    img.save(output, format='JPEG', quality=quality, optimize=True)
-                    compressed_data = output.getvalue()
-                    
-                    original_size = len(uploaded_file.getvalue())
-                    compressed_size = len(compressed_data)
-                    reduction = ((original_size - compressed_size) / original_size) * 100
-                    
-                    st.info(f"Compressed: {original_size//1024}KB → {compressed_size//1024}KB (-{reduction:.0f}%)")
-                    
-                    # Upload to Supabase
-                    supabase = get_authed_supabase()
-                    bucket_name = "email-product-pictures"
-                    filename = f"{selected_sku}.jpg"
-                    
-                    # Upload with upsert
-                    result = supabase.storage.from_(bucket_name).upload(
-                        path=filename,
-                        file=compressed_data,
-                        file_options={"content-type": "image/jpeg", "upsert": "true"}
-                    )
-                    
-                    # Get public URL
-                    public_url = supabase.storage.from_(bucket_name).get_public_url(filename)
-                    
-                    # Update product with image URL
-                    supabase.table("products").update({
-                        "image_url": public_url
-                    }).eq("sku", selected_sku).execute()
-                    
-                    st.success(f"✅ Image uploaded successfully for SKU: {selected_sku}")
-                    st.info(f"🔗 URL: {public_url}")
-                    st.cache_data.clear()
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Upload failed: {e}")
-        
-        st.markdown("---")
-        
         # View existing images
         st.markdown("### Current Product Images")
         
-        # Filter products with images
-        products_with_images = df[df["image_url"].notna() & (df["image_url"] != "")].copy()
+        # Filter products with images, excluding Phased Out products
+        products_with_images = df[
+            (df["image_url"].notna()) & 
+            (df["image_url"] != "") & 
+            (df["status"] != "Phased Out")
+        ].copy()
         
         if products_with_images.empty:
-            st.info("No products have images yet. Upload some above!")
+            st.info("No products have images yet.")
         else:
             st.caption(f"Showing {len(products_with_images)} products with images")
             

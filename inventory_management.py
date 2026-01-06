@@ -30,6 +30,7 @@ def _safe_int(val, default=0) -> int:
         return int(default)
 
 
+@st.cache_data(ttl=600)
 def load_master():
     """Load Supabase products as the master product list."""
     try:
@@ -84,6 +85,7 @@ def load_master():
     
     return df
 
+@st.cache_data(ttl=600)
 def load_inventory():
     """Load inventory data from Supabase"""
     try:
@@ -95,6 +97,7 @@ def load_inventory():
         st.error(f"Unable to load inventory from Supabase: {e}")
         return pd.DataFrame()
 
+@st.cache_data(ttl=600)
 def load_inventory_summary():
     """Load inventory summary from Supabase view"""
     try:
@@ -599,6 +602,7 @@ def update_inventory_delta(sku, delta):
             "stock_left": new_left,
             "status": status
         }).eq("sku", sku).execute()
+        st.cache_data.clear() # Clear cache on update
         return True, ""
     except Exception as e:
         return False, str(e)
@@ -613,41 +617,43 @@ def show_inventory_management():
     if MASTER.empty:
         st.error("No products found in Supabase. Please add products first.")
         return
-
     inv_df = load_inventory()
     summary_df = load_inventory_summary()
 
-    # Auto-sync products to inventory once per session to ensure new products appear with 0 stock
-    if "inventory_autosynced" not in st.session_state:
-        try:
-            supabase = get_authed_supabase()
-            supabase.rpc("sync_all_products_to_inventory").execute()
-        except Exception:
-            # Non-fatal; user can manually sync below
-            pass
-        st.session_state["inventory_autosynced"] = True
-
-    # Auto-sync images from storage to inventory once per session
-    if "inventory_images_synced" not in st.session_state:
-        try:
-            supabase = get_authed_supabase()
-            bucket_name = "email-product-pictures"
-            files = supabase.storage.from_(bucket_name).list()
-            
-            for file in files:
-                filename = file.get('name', '')
-                if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-                    sku = filename.rsplit('.', 1)[0]
-                    public_url = supabase.storage.from_(bucket_name).get_public_url(filename)
+    with st.expander("🛠️ Admin Tools & Sync"):
+        c1, c2 = st.columns(2)
+        if c1.button("🔄 Sync Products to Inventory", help="Ensure all products in the catalog have a corresponding entry in inventory (sets to 0 if missing)."):
+            try:
+                supabase = get_authed_supabase()
+                supabase.rpc("sync_all_products_to_inventory").execute()
+                st.success("Products synced to inventory.")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Sync failed: {e}")
+        
+        if c2.button("🖼️ Sync Storage Images", help="Scan storage bucket and update inventory image URLs based on SKU match."):
+            with st.spinner("Syncing images..."):
+                try:
+                    supabase = get_authed_supabase()
+                    bucket_name = "email-product-pictures"
+                    files = supabase.storage.from_(bucket_name).list()
                     
-                    # Update inventory with image URL
-                    supabase.table("inventory").update({
-                        "image_url": public_url
-                    }).eq("sku", sku).execute()
-        except Exception:
-            # Non-fatal; user can manually sync below
-            pass
-        st.session_state["inventory_images_synced"] = True
+                    for file in files:
+                        filename = file.get('name', '')
+                        if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                            sku = filename.rsplit('.', 1)[0]
+                            public_url = supabase.storage.from_(bucket_name).get_public_url(filename)
+                            
+                            supabase.table("inventory").update({
+                                "image_url": public_url
+                            }).eq("sku", sku).execute()
+                    
+                    st.success("Images synced to inventory.")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Image sync failed: {e}")
 
     # Auto-sync happens via database triggers - no manual sync needed
     st.caption("💡 Products and images sync automatically from the products table")
@@ -782,6 +788,7 @@ def show_inventory_management():
                 try:
                     if payload_rows:
                         supabase.table("inventory").upsert(payload_rows, on_conflict="sku").execute()
+                    st.cache_data.clear() # Clear cache on bulk save
                     st.success("Inventory updated.")
                     st.rerun()
                 except Exception as e:

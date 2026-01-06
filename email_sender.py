@@ -111,6 +111,7 @@ def fetch_image_from_url(url):
         pass
     return None
 
+@st.cache_data(ttl=600)
 def load_products_from_supabase():
     """Load products from inventory table (constantly updated) for email sender"""
     try:
@@ -208,6 +209,7 @@ def subtract_inventory_from_order_supabase(cart, sku_to_name, MASTER):
                 updates += 1
         
         if updates > 0:
+            st.cache_data.clear() # Clear cache on update
             return True, f"Updated {updates} items in Supabase"
         else:
             return True, "No items matched in inventory"

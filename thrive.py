@@ -9,6 +9,7 @@ from inventory_management import show_inventory_management
 from email_sender import show_email_sender
 from product_management import show_product_management
 from email_templates import show_email_test_interface
+from changelog import show_changelog
 
 # Page config
 st.set_page_config(
@@ -21,9 +22,16 @@ st.set_page_config(
 # Custom CSS for better styling
 st.markdown("""
 <style>
+    /* Global background */
+    .stApp {
+        background-color: #000000;
+        color: #ffffff;
+    }
+    
     /* Sidebar styling - Dark theme */
     [data-testid="stSidebar"] {
-        background-color: #1a1a1a;
+        background-color: #111111;
+        border-right: 1px solid #333333;
     }
     
     [data-testid="stSidebar"] * {
@@ -36,30 +44,54 @@ st.markdown("""
     }
     
     [data-testid="stSidebar"] .stRadio label {
-        background-color: #2d2d2d;
+        background-color: #1a1a1a;
         padding: 0.75rem 1rem;
         border-radius: 8px;
         margin: 0.25rem 0;
         cursor: pointer;
         transition: all 0.2s;
+        border: 1px solid #333333;
     }
     
     [data-testid="stSidebar"] .stRadio label:hover {
-        background-color: #3d3d3d;
+        background-color: #262626;
+        border-color: #444444;
     }
     
-    [data-testid="stSidebar"] .stRadio label[data-baseweb="radio"] > div:first-child {
-        background-color: #4d4d4d;
-    }
-    
-    /* Remove highlight on selected radio button */
-    [data-testid="stSidebar"] .stRadio input:checked + div {
-        background-color: #2d2d2d !important;
+    /* Selected radio button */
+    [data-testid="stSidebar"] .stRadio div[data-at="stHorizontalRadio"] div[data-testid="stMarkdownContainer"] p {
+        color: #ffffff !important;
     }
     
     /* Button alignment */
     .stButton > button {
         width: 100%;
+        background-color: #262626;
+        color: white;
+        border: 1px solid #444444;
+    }
+    
+    .stButton > button:hover {
+        background-color: #333333;
+        border-color: #555555;
+    }
+    
+    /* Version button styling */
+    .version-container button {
+        background-color: transparent !important;
+        border: none !important;
+        color: #555555 !important;
+        font-size: 10px !important;
+        text-align: left !important;
+        padding: 0 !important;
+        min-height: unset !important;
+        line-height: unset !important;
+    }
+    
+    .version-container button:hover {
+        color: #888888 !important;
+        text-decoration: underline !important;
+        background-color: transparent !important;
     }
     
     /* Better spacing */
@@ -70,6 +102,7 @@ st.markdown("""
     /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -83,17 +116,8 @@ if not current_user:
     st.error("Unable to load user information. Please log in again.")
     st.stop()
 
-user_email = current_user.get('email', '')
-user_name = current_user.get('name', current_user.get('email', 'User'))
-
 # Sidebar
 with st.sidebar:
-    # Logo/Title
-    st.image("Thrive.png", width=100)
-    st.markdown("## Thrive Tools")
-    st.caption(f"👤 {user_name}")
-    st.markdown("---")
-    
     # Build menu options based on permissions
     menu_options = []
     if check_permission("inventory_management"):
@@ -107,12 +131,11 @@ with st.sidebar:
         st.error("No module access. Contact admin.")
         st.stop()
     
+    st.markdown("### Navigation")
     tool = st.radio("Navigation", menu_options, label_visibility="collapsed")
     
-    # Spacer
-    st.markdown("---")
-    
     # Logout button at bottom
+    st.markdown("---")
     if st.button("Logout", use_container_width=True):
         # Clear session file
         if current_user and current_user.get('email'):
@@ -128,9 +151,19 @@ with st.sidebar:
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
+    
+    # Version button at bottom
+    st.markdown("---")
+    st.markdown('<div class="version-container">', unsafe_allow_html=True)
+    if st.button(f"v2.4.1", key="version_btn", help="View Changelog", use_container_width=True):
+        st.session_state["show_changelog"] = True
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # Main content area
-if tool == "Inventory":
+if st.session_state.get("show_changelog"):
+    show_changelog()
+elif tool == "Inventory":
     if check_permission("inventory_management"):
         show_inventory_management()
     else:
