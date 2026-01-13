@@ -737,7 +737,7 @@ def show_email_sender(email_config=None, inv_config=None):
                     <body>
                       <div class="container">
                         <div class="header">
-                          <img src="cid:logo" alt="Thrive Logo">
+                          <img src="Thrive.png" alt="Thrive Logo">
                         </div>
                         <div class="content">
                           <h2 class="greeting">Hello {order['First_Name']},</h2>
