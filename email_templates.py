@@ -287,8 +287,8 @@ def show_email_test_interface():
                 
                 msg.attach(MIMEText(html, 'html'))
                 
-    # Attach logo - use root Thrive.png (inline cid:logo)
-    logo_path = "Thrive.png"
+                # Attach logo - use root Thrive.png (inline cid:logo)
+                logo_path = "Thrive.png"
                 if os.path.exists(logo_path):
                     with open(logo_path, "rb") as f:
                         logo_img = MIMEImage(f.read())
