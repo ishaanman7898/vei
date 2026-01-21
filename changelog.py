@@ -7,7 +7,17 @@ def show_changelog():
     st.markdown("---")
 
     # Current Version
-    st.markdown("### v2.4.1 (Current)")
+    st.markdown("### v3.0.0 (Current)")
+    st.markdown("""
+    **January 21, 2026**
+    - **Inline Email Logo**: Swapped header logo references to the bundled `Thrive.png` and attach as `cid:logo` so emails always show the top banner.
+    - **Template Stability**: Fixed indentation in the email preview sender to prevent Streamlit syntax errors during test sends.
+    - **Consistent Branding**: Confirmation emails now embed the same inline logo as fulfillment emails.
+    """)
+
+    st.markdown("---")
+
+    st.markdown("### v2.4.1")
     st.markdown("""
     **January 6, 2026**
     - **UI/UX Reimagined**: Complete overhaul of the login interface for a cleaner, modern aesthetic.
