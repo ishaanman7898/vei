@@ -237,7 +237,7 @@ def show_email_test_interface():
     
     # Convert logo to base64 for preview
     import base64
-    logo_path = "assets/logo.png"
+    logo_path = "Thrive.png"
     logo_base64 = ""
     if os.path.exists(logo_path):
         with open(logo_path, "rb") as f:
@@ -287,8 +287,8 @@ def show_email_test_interface():
                 
                 msg.attach(MIMEText(html, 'html'))
                 
-                # Attach logo - use assets/logo.png (transparent version)
-                logo_path = "assets/logo.png"
+    # Attach logo - use root Thrive.png (inline cid:logo)
+    logo_path = "Thrive.png"
                 if os.path.exists(logo_path):
                     with open(logo_path, "rb") as f:
                         logo_img = MIMEImage(f.read())

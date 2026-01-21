@@ -737,7 +737,7 @@ def show_email_sender(email_config=None, inv_config=None):
                     <body>
                       <div class="container">
                         <div class="header">
-                          <img src="Thrive.png" alt="Thrive Logo">
+                          <img src="cid:logo" alt="Thrive Logo">
                         </div>
                         <div class="content">
                           <h2 class="greeting">Hello {order['First_Name']},</h2>
@@ -795,8 +795,8 @@ def show_email_sender(email_config=None, inv_config=None):
                             img.add_header('Content-Disposition', f'attachment; filename="{filename}"')
                             msg.attach(img)
                 
-                # Attach Logo
-                logo_path = "assets/logo.png"
+                # Attach Logo inline for all email types
+                logo_path = "Thrive.png"
                 if os.path.exists(logo_path):
                     with open(logo_path, "rb") as f:
                         logo_img = MIMEImage(f.read())
