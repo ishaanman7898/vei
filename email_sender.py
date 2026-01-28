@@ -374,7 +374,7 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
         if allow_inventory_subtraction:
             subtract_inv = st.checkbox("Subtract from Inventory?", value=True, key=f"medium_subtract_inv_{key_prefix}")
             if subtract_inv:
-                default_sheet = inv_config.get('sheet_name', 'Inventory Recognition') if inv_config else 'Inventory Recognition'
+                default_sheet = inv_config.get('sheet_name', 'inventory') if inv_config else 'inventory'
                 target_sheet = st.text_input("Inventory Sheet Name", value=default_sheet, key=f"medium_sheet_{key_prefix}")
         else:
             subtract_inv = False
@@ -504,7 +504,7 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
         if allow_inventory_subtraction:
             subtract_inv = st.checkbox("Subtract from Inventory?", value=True, key=f"large_subtract_inv_{key_prefix}")
             if subtract_inv:
-                default_sheet = inv_config.get('sheet_name', 'Inventory Recognition') if inv_config else 'Inventory Recognition'
+                default_sheet = inv_config.get('sheet_name', 'inventory') if inv_config else 'inventory'
                 target_sheet = st.text_input("Inventory Sheet Name", value=default_sheet, key=f"large_sheet_{key_prefix}")
         else:
             subtract_inv = False
