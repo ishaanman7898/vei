@@ -65,6 +65,15 @@ def check_authentication():
         .stImage {
             display: flex;
             justify-content: center;
+            align-items: center;
+        }
+        
+        /* Additional centering for logo container */
+        .stImage > div {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
         }
     </style>
     """, unsafe_allow_html=True)
