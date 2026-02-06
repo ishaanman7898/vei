@@ -167,11 +167,12 @@ def show_product_management():
     df = load_pwp()
     
     # Initialize tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "View & Edit Catalog", 
         "Add New Product", 
         "Product Images",
-        "Product Merger"
+        "Product Merger",
+        "Tradeshow Merger"
     ])
     
     # Redundant merger code was here, now moved successfully to tab4 structure below.
@@ -547,3 +548,120 @@ def show_product_management():
                     
                 except Exception as e:
                     st.error(f"Error merging files: {str(e)}")
+
+    # --- TRADESHOW MERGER ---
+    with tab5:
+        st.subheader("Tradeshow Merger")
+        st.caption("Merge Tradeshow Orders CSV and Items CSV into a consolidated format.")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            tradeshow_orders = st.file_uploader("Upload Tradeshow Orders CSV", type=["csv"], key="ts_orders")
+        with c2:
+            tradeshow_items = st.file_uploader("Upload Tradeshow Items CSV", type=["csv"], key="ts_items")
+            
+        if tradeshow_orders and tradeshow_items:
+            if st.button("Process Tradeshow Merge", type="primary"):
+                try:
+                    # Read CSVs
+                    df1 = pd.read_csv(tradeshow_orders)
+                    df2 = pd.read_csv(tradeshow_items)
+                    
+                    # Normalize columns
+                    df1.columns = df1.columns.str.strip()
+                    df2.columns = df2.columns.str.strip()
+                    
+                    # Handle Transaction No columns (case insensitive and fuzzy match)
+                    # CSV 1: Transaction No.
+                    # CSV 2: Transaction no
+                    t1_col = next((c for c in df1.columns if "transaction" in c.lower()), None)
+                    t2_col = next((c for c in df2.columns if "transaction" in c.lower()), None)
+                    
+                    if not t1_col or not t2_col:
+                        st.error(f"Missing transaction column in one of the files. Found in CSV 1: {t1_col}, CSV 2: {t2_col}")
+                        st.stop()
+                    
+                    # Ensure Quantity is numeric in CSV 2
+                    qty_col = next((c for c in df2.columns if "quantity" in c.lower()), None)
+                    name_col = next((c for c in df2.columns if "product name" in c.lower() or "item name" in c.lower()), None)
+                    
+                    if qty_col:
+                        df2[qty_col] = pd.to_numeric(df2[qty_col], errors='coerce').fillna(1).astype(int)
+                    else:
+                        df2['Quantity'] = 1
+                        qty_col = 'Quantity'
+                        
+                    if not name_col:
+                        st.error("Could not find 'Product name' or 'Item name' in CSV 2")
+                        st.stop()
+                        
+                    # Create formatted item string
+                    def format_item(row):
+                        name = str(row[name_col]) if pd.notna(row[name_col]) else ""
+                        qty = row[qty_col]
+                        return f"{name} x {qty}" if qty > 1 else name
+                        
+                    df2["Formatted_Product"] = df2.apply(format_item, axis=1)
+                    
+                    # Aggregate items by transaction
+                    # Use double spaces or comma-space as separator? Let's use comma-space for "Product(s) Ordered & Quantity"
+                    items_grouped = df2.groupby(t2_col)["Formatted_Product"].apply(lambda x: ", ".join(filter(None, x))).reset_index()
+                    items_grouped.rename(columns={"Formatted_Product": "Product_List"}, inplace=True)
+                    
+                    # Merge df1 with items_grouped
+                    # Convert transaction columns to string to ensure match
+                    df1[t1_col] = df1[t1_col].astype(str)
+                    items_grouped[t2_col] = items_grouped[t2_col].astype(str)
+                    
+                    merged = pd.merge(df1, items_grouped, left_on=t1_col, right_on=t2_col, how="left")
+                    
+                    # Populate Product(s) Ordered & Quantity
+                    target_prod_col = "Product(s) Ordered & Quantity"
+                    if target_prod_col in merged.columns:
+                        merged[target_prod_col] = merged["Product_List"].fillna(merged[target_prod_col])
+                    else:
+                        merged[target_prod_col] = merged["Product_List"]
+                    
+                    # Final columns as requested
+                    final_cols = [
+                        "Web or Booth", "Transaction No.", "Purchase Date", "Customer Name", "Company", 
+                        "City", "State", "Customer E-Mail", "Product(s) Ordered & Quantity", 
+                        "Order Subtotal", "Discount Applied", "Shipping", "Tax", "Order Total", "Shipping Status"
+                    ]
+                    
+                    # Map existing columns to final_cols if names differ slightly
+                    # e.g. df1 might have "Transaction No." but we need specific case
+                    col_map = {}
+                    for target in final_cols:
+                        match = next((c for c in merged.columns if c.lower() == target.lower()), None)
+                        if match:
+                            col_map[match] = target
+                    
+                    result_df = merged.rename(columns=col_map)
+                    
+                    # Ensure all final columns exist
+                    for col in final_cols:
+                        if col not in result_df.columns:
+                            result_df[col] = "N/A"
+                    
+                    # Select and order columns
+                    result_df = result_df[final_cols]
+                    
+                    st.success("✅ Tradeshow files merged successfully!")
+                    st.dataframe(result_df)
+                    
+                    # Download button
+                    csv_data = result_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Tradeshow Merged CSV",
+                        data=csv_data,
+                        file_name="tradeshow_merged.csv",
+                        mime="text/csv",
+                        type="primary"
+                    )
+                    
+                except Exception as e:
+                    st.error(f"Error in tradeshow merge: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
