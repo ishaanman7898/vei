@@ -13,6 +13,26 @@ from email.mime.image import MIMEImage
 from supabase_client import get_authed_supabase
 from email_templates import get_fulfillment_email_html, generate_items_html
 
+def split_product_entries(raw):
+    if raw is None:
+        return []
+    text = str(raw)
+    if not text or text.strip() in ["", "nan", "None", "null"]:
+        return []
+    text = text.replace(";", ",")
+    parts = re.split(r"[\r\n,]+", text)
+    out = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        subparts = re.split(r"\s{2,}", part)
+        for sp in subparts:
+            sp = sp.strip()
+            if sp:
+                out.append(sp)
+    return out
+
 def get_image_url_from_supabase(sku, supabase):
     """Get image URL from inventory table for a given SKU"""
     try:
@@ -405,70 +425,22 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                     prods = str(row.get("Products", "")).strip()
                     cart = {}
                     if prods and prods != "nan":
-                        # Split by newlines first
-                        lines = prods.split('\n')
-                        for line in lines:
-                            line = line.strip()
-                            if not line: continue
-                            
-                            # Try to parse as multiple products
-                            products_found = []
-                            
-                            # If line contains commas, split by commas
-                            if ',' in line:
-                                products_found = line.split(',')
-                            else:
-                                # Try to split by common product patterns
-                                # Look for patterns like "Surge IV (Lemonade)" or "College Bottle - University"
-                                import re
-                                
-                                # Split by multiple spaces and common product separators
-                                potential_products = re.split(r'\s{2,}|\s+(?=Surge IV|\w+ IV|\w+ Bottle|Peloton|College)', line)
-                                
-                                if len(potential_products) > 1:
-                                    # Check if we found valid product names
-                                    valid_products = []
-                                    for prod in potential_products:
-                                        prod = prod.strip()
-                                        if prod:
-                                            # Try to find a matching product
-                                            found_match = False
-                                            for full, s in name_to_sku.items():
-                                                if prod.lower() in full.lower() or full.lower() in prod.lower():
-                                                    valid_products.append(prod)
-                                                    found_match = True
-                                                    break
-                                            if not found_match and len(prod) > 3:  # Reasonable product name length
-                                                valid_products.append(prod)
-                                    
-                                    if len(valid_products) > 1:
-                                        products_found = valid_products
-                            
-                            # If no products found, treat the whole line as one product
-                            if not products_found:
-                                products_found = [line]
-                            
-                            # Process each product
-                            for product_line in products_found:
-                                product_line = product_line.strip()
-                                if not product_line: continue
-                                
-                                clean = re.sub(r'\s*[×x]\s*\d+\s*$', '', product_line).strip()
-                                qty_match = re.search(r'[×x]\s*(\d+)\s*$', product_line)
-                                qty = int(qty_match.group(1)) if qty_match else 1
-                                sku = None
-                                for full, s in name_to_sku.items():
-                                    if clean.lower() in full.lower() or full.lower() in clean.lower():
-                                        sku = s; break
-                                # Validate product is not phased out before adding to cart
-                                if sku:
-                                    # Check product status in MASTER
-                                    product_row = MASTER[MASTER["SKU#"] == sku]
-                                    if not product_row.empty:
-                                        status = str(product_row.iloc[0].get("Product Status", "")).strip()
-                                        if status and status.lower() == "phased out":
-                                            continue  # Skip phased out products
-                                    cart[sku] = cart.get(sku, 0) + qty
+                        for product_line in split_product_entries(prods):
+                            clean = re.sub(r"\s*[×x]\s*\d+\s*$", "", product_line, flags=re.IGNORECASE).strip()
+                            qty_match = re.search(r"[×x]\s*(\d+)\s*$", product_line, flags=re.IGNORECASE)
+                            qty = int(qty_match.group(1)) if qty_match else 1
+                            sku = None
+                            for full, s in name_to_sku.items():
+                                if clean.lower() in full.lower() or full.lower() in clean.lower():
+                                    sku = s
+                                    break
+                            if sku:
+                                product_row = MASTER[MASTER["SKU#"] == sku]
+                                if not product_row.empty:
+                                    status = str(product_row.iloc[0].get("Product Status", "")).strip()
+                                    if status and status.lower() == "phased out":
+                                        continue
+                                cart[sku] = cart.get(sku, 0) + qty
                     
                     if cart:
                         # Check for missing images
@@ -539,23 +511,20 @@ def render_entry_tabs(MASTER, sku_to_name, name_to_sku, sku_to_price, inv_config
                 
                 prods = str(row.get(prod_col, ""))
                 cart = {}
-                for line in prods.split("\n"):
-                    line = line.strip()
-                    if not line: continue
-                    clean = re.sub(r'[x×]\s*\d+$', '', line, flags=re.IGNORECASE).strip()
+                for line in split_product_entries(prods):
+                    clean = re.sub(r"[x×]\s*\d+$", "", line, flags=re.IGNORECASE).strip()
                     sku = None
                     for full, s in name_to_sku.items():
                         if clean.lower() in full.lower() or full.lower() in clean.lower():
-                            sku = s; break
-                    # Validate product is not phased out before adding to cart
+                            sku = s
+                            break
                     if sku:
-                        # Check product status in MASTER
                         product_row = MASTER[MASTER["SKU#"] == sku]
                         if not product_row.empty:
                             status = str(product_row.iloc[0].get("Product Status", "")).strip()
                             if status and status.lower() == "phased out":
-                                continue  # Skip phased out products
-                        q_match = re.search(r'[x×]\s*(\d+)$', line, re.IGNORECASE)
+                                continue
+                        q_match = re.search(r"[x×]\s*(\d+)$", line, re.IGNORECASE)
                         qty = int(q_match.group(1)) if q_match else 1
                         cart[sku] = cart.get(sku, 0) + qty
                 
