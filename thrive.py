@@ -8,7 +8,6 @@ from auth import check_authentication, get_current_user, check_permission
 from inventory_management import show_inventory_management
 from email_sender import show_email_sender
 from product_management import show_product_management
-from email_templates import show_email_test_interface
 from changelog import show_changelog
 
 # Page config

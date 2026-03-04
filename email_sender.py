@@ -11,7 +11,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from supabase_client import get_authed_supabase
-from email_templates import get_fulfillment_email_html, generate_items_html
+from email_templates import get_fulfillment_email_html, get_confirmation_email_html, generate_items_html
 
 def split_product_entries(raw):
     if raw is None:
@@ -88,38 +88,19 @@ def get_storage_image_list():
         return []
 
 def has_image(sku, product_df=None):
-    """Check if product has an image (checks inventory table image_url ONLY - strict mode)"""
-    # STRICT MODE: Only check inventory table image_url
-    # This ensures we only send emails with products that have proper image URLs in inventory
-    if product_df is not None:
-        try:
-            match = product_df[product_df["SKU#"] == sku]
-            if not match.empty and 'image_url' in match.columns:
-                image_url = match.iloc[0].get('image_url')
-                
-                # DEBUG: Print what we're checking
-                print(f"[DEBUG] Checking SKU '{sku}': image_url = '{image_url}' (type: {type(image_url)})")
-                
-                # Reject if image_url is None, empty, or 'N/A'
-                if not image_url or str(image_url).strip() in ['', 'nan', 'None', 'null', 'N/A']:
-                    print(f"[DEBUG] SKU '{sku}' REJECTED: Invalid or missing image_url")
-                    return False
-                # Verify it's a valid HTTP URL
-                url_str = str(image_url).strip()
-                if url_str.startswith('http'):
-                    print(f"[DEBUG] SKU '{sku}' APPROVED: Valid HTTP URL")
-                    return True
-                print(f"[DEBUG] SKU '{sku}' REJECTED: URL doesn't start with 'http'")
-                return False
-            else:
-                print(f"[DEBUG] SKU '{sku}' REJECTED: No match found or no image_url column")
-        except Exception as e:
-            print(f"[DEBUG] SKU '{sku}' REJECTED: Exception - {e}")
+    """Check if product has a valid image URL in the inventory table."""
+    if product_df is None:
+        return False
+    try:
+        match = product_df[product_df["SKU#"] == sku]
+        if match.empty or 'image_url' not in match.columns:
             return False
-    
-    # If no product_df provided, assume no image
-    print(f"[DEBUG] SKU '{sku}' REJECTED: No product_df provided")
-    return False
+        image_url = match.iloc[0].get('image_url')
+        if not image_url or str(image_url).strip() in ['', 'nan', 'None', 'null', 'N/A']:
+            return False
+        return str(image_url).strip().startswith('http')
+    except Exception:
+        return False
 
 def fetch_image_from_url(url):
     """Download image from URL and return bytes"""
@@ -710,79 +691,34 @@ def show_email_sender(email_config=None, inv_config=None):
                     st.warning(f"Removed phased out products from order #{order['Order_Number']}: {', '.join(phased_out_removed)}")
                 
                 total = order.get("Order_Total", sum(sku_to_price.get(s, 0) * q for s, q in cart.items()))
-                items_html = ""
-                all_skus = []
-                for sku, qty in cart.items():
-                    name = sku_to_name.get(sku, sku)
-                    price = sku_to_price.get(sku, 0)
-                    if qty == 1: items_html += f'<div class="item">• {name} – ${price:.2f}</div>'
-                    else: items_html += f'<div class="item">• {name} × {qty} – ${price * qty:.2f}</div>'
-                    all_skus.extend([sku] * qty)
-                
-                msg = MIMEMultipart()
-                msg['From'] = f"Thrive <{SENDER_EMAIL}>"
-                msg['To'] = order['Email']
-                # Determine email type
+                all_skus = [sku for sku, qty in cart.items() for _ in range(qty)]
                 order_type = order.get("type", "fulfillment")
-                
                 msg = MIMEMultipart()
                 msg['From'] = f"Thrive <{SENDER_EMAIL}>"
                 msg['To'] = order['Email']
                 
+                # Build items list for templates
+                items_list = []
+                for sku, qty in cart.items():
+                    items_list.append({
+                        "name":  sku_to_name.get(sku, sku),
+                        "price": sku_to_price.get(sku, 0),
+                        "qty":   qty,
+                    })
+                items_rows = generate_items_html(items_list)
+
                 if order_type == "confirmation":
-                    # --- CONFIRMATION EMAIL (No Images, Simple Text) ---
                     msg['Subject'] = f"We received your order #{order['Order_Number']} – Thrive"
-                    
-                    html = f"""
-                    <html>
-                    <head>
-                      <style>
-                        body {{ font-family: Helvetica, Arial, sans-serif; color: #333; line-height: 1.7; margin: 0; padding: 20px; background: #f8f9fa; }}
-                        .container {{ max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }}
-                        .header {{ background: #ffffff; padding: 20px; text-align: center; border-bottom: 1px solid #eee; }}
-                        .header img {{ max-height: 80px; }}
-                        .content {{ padding: 40px; }}
-                        .greeting {{ font-size: 24px; margin: 0 0 20px 0; color: #333; font-weight: bold; }}
-                        .items {{ background: #e3f2fd; padding: 20px; border-radius: 10px; margin: 25px 0; }}
-                        .item {{ margin: 12px 0; font-size: 16px; color: #333; }}
-                        .blue {{ color: #1E90FF; }}
-                      </style>
-                    </head>
-                    <body>
-                      <div class="container">
-                        <div class="header">
-                          <img src="cid:logo" alt="Thrive Logo">
-                        </div>
-                        <div class="content">
-                          <h2 class="greeting">Hello {order['First_Name']},</h2>
-                          <p>We received your order <span class="blue">#{order['Order_Number']}</span>.</p>
-                          <p>Here is what you ordered:</p>
-                          <div class="items">{items_html}</div>
-                          <p><strong>Total:</strong> ${total:.2f}</p>
-                          <p>We will process it shortly!</p>
-                          <p>Best,<br>The Thrive Team</p>
-                        </div>
-                      </div>
-                    </body>
-                    </html>
-                    """
+                    html = get_confirmation_email_html(
+                        order['First_Name'], order['Order_Number'], items_rows, total
+                    )
                     msg.attach(MIMEText(html, 'html'))
-                    
+
                 else:
-                    # --- FULFILLMENT EMAIL (With Images, Thank You) ---
                     msg['Subject'] = f"Thank you for your order #{order['Order_Number']} – Thrive"
-                    
-                    # Generate items HTML using the new template function
-                    items_list = []
-                    for sku, qty in cart.items():
-                        name = sku_to_name.get(sku, sku)
-                        price = sku_to_price.get(sku, 0)
-                        items_list.append({"name": name, "price": price, "qty": qty})
-                    
-                    items_html = generate_items_html(items_list)
-                    
-                    # Use the new fulfillment email template
-                    html = get_fulfillment_email_html(order['First_Name'], order['Order_Number'], items_html, total)
+                    html = get_fulfillment_email_html(
+                        order['First_Name'], order['Order_Number'], items_rows, total
+                    )
                     msg.attach(MIMEText(html, 'html'))
                     
                     # Attach product images ONLY for fulfillment
@@ -817,14 +753,14 @@ def show_email_sender(email_config=None, inv_config=None):
                         logo_img.add_header('Content-ID', '<logo>')
                         logo_img.add_header('Content-Disposition', 'inline; filename="logo.png"')
                         msg.attach(logo_img)
-                    
-                    # Handle Inventory Subtraction
-                    if order.get("subtract_inventory"):
-                        success, note = subtract_inventory_from_order_supabase(cart, sku_to_name, MASTER)
-                        if success:
-                            st.toast(f"Inventory updated for {order['First_Name']}: {note}")
-                        else:
-                            st.error(f"Inventory update failed for {order['First_Name']}: {note}")
+
+                # Handle Inventory Subtraction (runs regardless of logo existence)
+                if order.get("subtract_inventory"):
+                    success, note = subtract_inventory_from_order_supabase(cart, sku_to_name, MASTER)
+                    if success:
+                        st.toast(f"Inventory updated for {order['First_Name']}: {note}")
+                    else:
+                        st.error(f"Inventory update failed for {order['First_Name']}: {note}")
                 
                 try:
                     server.send_message(msg)
