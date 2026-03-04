@@ -98,10 +98,22 @@ st.markdown("""
         padding-top: 2rem;
     }
     
-    /* Hide Streamlit branding */
+    /* Hide Streamlit branding (keep header visible so sidebar toggle works) */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    header::before {content: ""; display: block;}
+
+    /* Force sidebar always open — hide the collapse/expand toggle arrow */
+    [data-testid="collapsedControl"] {display: none !important;}
+    button[kind="header"] {display: none !important;}
+
+    /* Prevent sidebar from sliding off-screen */
+    [data-testid="stSidebar"] {
+        transform: none !important;
+        min-width: 244px !important;
+        width: 244px !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
