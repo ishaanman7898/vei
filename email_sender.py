@@ -189,7 +189,8 @@ def subtract_inventory_from_order_supabase(cart, sku_to_name, MASTER):
             
             if not match.empty:
                 existing = match.iloc[0]
-                current_stock = int(existing.get("stock_left", 0))
+                stock_raw = existing.get("stock_left")
+                current_stock = int(stock_raw) if stock_raw is not None else 0
                 new_stock = current_stock - qty
                 
                 # Calculate new status
@@ -754,13 +755,13 @@ def show_email_sender(email_config=None, inv_config=None):
                         logo_img.add_header('Content-Disposition', 'inline; filename="logo.png"')
                         msg.attach(logo_img)
 
-                # Handle Inventory Subtraction (runs regardless of logo existence)
-                if order.get("subtract_inventory"):
+                # Handle Inventory Subtraction (fulfillment emails only)
+                if order.get("subtract_inventory") and order_type == "fulfillment":
                     success, note = subtract_inventory_from_order_supabase(cart, sku_to_name, MASTER)
                     if success:
                         st.toast(f"Inventory updated for {order['First_Name']}: {note}")
                     else:
-                        st.error(f"Inventory update failed for {order['First_Name']}: {note}")
+                        st.error(f"❌ Inventory update FAILED for {order['First_Name']}: {note}")
                 
                 try:
                     server.send_message(msg)
