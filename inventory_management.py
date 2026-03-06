@@ -68,7 +68,7 @@ def load_master():
     
     # Clean price
     def clean_price(x):
-        if pd.isna(x) or x == "" or str(x).lower() in ["nan", "none", ""]:
+        if pd.isna(x) or x == "" or str(x).lower in ["nan", "none", ""]:
             return 0.0
         if isinstance(x, str): 
             x = x.replace("$", "").replace(",", "").strip()
@@ -214,379 +214,8 @@ def pdf_to_csv_converter(pdf_file):
         st.error(f"Error converting PDF: {e}")
         return None
 
-def parse_invoice(file, MASTER):
-    """Parse invoice file (PDF or CSV) and extract items"""
-    items = {}
-    invoice_num = "Unknown"
-    invoice_date = None
-    due_date = None
-    invoice_total = None
-    
-    if file.name.endswith(".pdf"):
-        # PDF parsing
-        try:
-            with pdfplumber.open(file) as pdf:
-                all_text = ""
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        all_text += text + "\n"
-                
-                lines = all_text.split("\n")
-                
-                # Extract metadata
-                for line in lines:
-                    line_lower = line.lower()
-                    if "invoice number:" in line_lower:
-                        parts = line.split(":")
-                        if len(parts) > 1:
-                            invoice_num = parts[1].strip().split()[0]
-                    elif "invoice date:" in line_lower:
-                        parts = line.split(":")
-                        if len(parts) > 1:
-                            invoice_date = parts[1].strip().split("To:")[0].strip()
-                    elif "due date:" in line_lower:
-                        parts = line.split(":")
-                        if len(parts) > 1:
-                            invoice_date_parts = parts[1].strip().split()
-                            if invoice_date_parts:
-                                due_date = " ".join(invoice_date_parts[:3])  # Get date part
-                    elif "invoice total:" in line_lower:
-                        parts = line.split(":")
-                        if len(parts) > 1:
-                            total_str = parts[1].strip().replace("$", "").replace(",", "")
-                            try:
-                                invoice_total = float(total_str)
-                            except:
-                                pass
-                
-                # Find the header line
-                header_idx = None
-                for idx, line in enumerate(lines):
-                    if "Item" in line and "SKU#" in line and "Quantity" in line:
-                        header_idx = idx
-                        break
-                
-                # Parse product lines
-                if header_idx is not None:
-                    skip_keywords = ['shipping', 'ground shipping', 'subtotal', 'total', 'tax', 'grand total',
-                                   'please send', 'payment', 'bank', 'note:', 'payment terms', 'this document',
-                                   'past due', 'interest', 'net 30', 'discount', '%']
-                    
-                    for line in lines[header_idx + 1:]:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        
-                        # Skip summary/footer lines
-                        line_lower = line.lower()
-                        should_skip = False
-                        for keyword in skip_keywords:
-                            if keyword in line_lower:
-                                should_skip = True
-                                break
-                        if should_skip:
-                            continue
-                        
-                        # Parse line format: "Item Name SKU# $Price Qty $Amount"
-                        parts = line.split()
-                        if len(parts) < 3:
-                            continue
-                        
-                        # Try to find quantity and amount (numbers)
-                        qty = None
-                        unit_price = None
-                        total_amount = None
-                        sku = None
-                        
-                        # Look for patterns
-                        for i, part in enumerate(parts):
-                            # Check for SKU patterns (alphanumeric with hyphens or long numbers)
-                            if re.match(r'^[A-Z]{1,3}-[A-Z0-9]{1,5}$', part) or re.match(r'^\d{10,}$', part):
-                                sku = part
-                            # Check for price patterns ($X.XX)
-                            elif part.startswith('$'):
-                                price_val = part.replace('$', '').replace(',', '')
-                                try:
-                                    price_float = float(price_val)
-                                    if unit_price is None:
-                                        unit_price = price_float
-                                    else:
-                                        total_amount = price_float
-                                except:
-                                    pass
-                            # Check for quantity (plain number between 1-1000)
-                            elif part.isdigit():
-                                num = int(part)
-                                if 1 <= num <= 1000 and qty is None:
-                                    qty = num
-                        
-                        # Extract item name (everything before SKU or first $)
-                        item_name = ""
-                        for part in parts:
-                            if part == sku or part.startswith('$'):
-                                break
-                            item_name += part + " "
-                        item_name = item_name.strip()
-                        
-                        # Normalize product name
-                        if item_name:
-                            item_name = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', item_name)
-                            item_name = re.sub(r'(\w)x([A-Z])', r'\1 x \2', item_name)
-                        
-                        # Calculate unit price if we have total and qty
-                        if unit_price is None and total_amount and qty and qty > 0:
-                            unit_price = total_amount / qty
-                        
-                        # VALIDATION: Check both current products (MASTER) and PPwP.csv for best product match
-                        is_valid = False
-                        matched = None
-                        matched_product_name = None
-                        
-                        # Load phased products
-                        phased_df = load_phased_products()
-                        
-                        # PRIORITY 1: Exact product name match in PPwP.csv (legacy products)
-                        if not is_valid and item_name and not phased_df.empty:
-                            for _, row in phased_df.iterrows():
-                                phased_name = str(row["Product name"]).strip()
-                                # Normalize both names for comparison
-                                normalized_phased = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', phased_name)
-                                normalized_phased = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_phased)
-                                normalized_item = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', item_name)
-                                normalized_item = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_item)
-                                
-                                if normalized_item.lower() == normalized_phased.lower():
-                                    # Found exact match in phased products, map to current product
-                                    phased_sku = str(row["SKU#"]).strip()
-                                    if phased_sku in MASTER["SKU#"].values:
-                                        matched = MASTER[MASTER["SKU#"] == phased_sku]["Product name"].iloc[0]
-                                        matched_product_name = phased_name  # Keep original name for display
-                                        is_valid = True
-                                        break
-                        
-                        # PRIORITY 2: Exact product name match in MASTER (current products)
-                        if not is_valid and item_name:
-                            normalized_item = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', item_name)
-                            normalized_item = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_item)
-                            for product_name in MASTER["Product name"].values:
-                                normalized_product = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', str(product_name))
-                                normalized_product = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_product)
-                                
-                                if normalized_item.lower() == normalized_product.lower():
-                                    matched = product_name
-                                    is_valid = True
-                                    break
-                        
-                        # PRIORITY 3: Partial name match in PPwP.csv (legacy products)
-                        if not is_valid and item_name and not phased_df.empty:
-                            normalized_item = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', item_name)
-                            normalized_item = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_item)
-                            item_lower = normalized_item.lower()
-                            
-                            for _, row in phased_df.iterrows():
-                                phased_name = str(row["Product name"]).strip()
-                                normalized_phased = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', phased_name)
-                                normalized_phased = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_phased)
-                                phased_lower = normalized_phased.lower()
-                                
-                                if phased_lower in item_lower or item_lower in phased_lower:
-                                    phased_sku = str(row["SKU#"]).strip()
-                                    if phased_sku in MASTER["SKU#"].values:
-                                        matched = MASTER[MASTER["SKU#"] == phased_sku]["Product name"].iloc[0]
-                                        matched_product_name = phased_name
-                                        is_valid = True
-                                        break
-                        
-                        # PRIORITY 4: Partial name match in MASTER (current products)
-                        if not is_valid and item_name:
-                            normalized_item = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', item_name)
-                            normalized_item = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_item)
-                            for product_name in MASTER["Product name"].values:
-                                normalized_product = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', str(product_name))
-                                normalized_product = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_product)
-                                prod_lower = normalized_product.lower()
-                                
-                                if prod_lower in item_lower or item_lower in prod_lower:
-                                    matched = product_name
-                                    is_valid = True
-                                    break
-                        
-                        # PRIORITY 5 (LAST RESORT): SKU match in MASTER
-                        if not is_valid and sku and sku in MASTER["SKU#"].values:
-                            matched = MASTER[MASTER["SKU#"] == sku]["Product name"].iloc[0]
-                            is_valid = True
-                        
-                        # Only add if valid and has quantity
-                        if is_valid and matched and qty and qty > 0:
-                            display_name = matched_product_name if matched_product_name else matched
-                            items[matched] = (qty, invoice_num, unit_price, total_amount, invoice_date, due_date)
-        except Exception as e:
-            st.error(f"Error parsing PDF: {e}")
-            return {}
-    
-    elif file.name.endswith(".csv"):
-        df_raw = pd.read_csv(file)
-        
-        # Extract invoice metadata
-        for _, row in df_raw.iterrows():
-            for col in df_raw.columns:
-                cell = str(row[col]) if pd.notna(row[col]) else ""
-                cell_lower = cell.lower()
-                
-                if "invoice number:" in cell_lower:
-                    cols = df_raw.columns.tolist()
-                    idx = cols.index(col)
-                    if idx + 1 < len(cols):
-                        invoice_num = str(row[cols[idx + 1]]).strip()
-                
-                if "invoice date:" in cell_lower:
-                    cols = df_raw.columns.tolist()
-                    idx = cols.index(col)
-                    if idx + 1 < len(cols):
-                        invoice_date = str(row[cols[idx + 1]]).strip()
-                
-                if "due date:" in cell_lower:
-                    cols = df_raw.columns.tolist()
-                    idx = cols.index(col)
-                    if idx + 1 < len(cols):
-                        due_date = str(row[cols[idx + 1]]).strip()
-                
-                if "invoice total:" in cell_lower:
-                    cols = df_raw.columns.tolist()
-                    idx = cols.index(col)
-                    if idx + 1 < len(cols):
-                        total_str = str(row[cols[idx + 1]]).replace("$", "").replace(",", "").strip()
-                        try:
-                            invoice_total = float(total_str)
-                        except:
-                            pass
-        
-        # Find header row
-        header_row = None
-        item_col_idx = None
-        sku_col_idx = None
-        qty_col_idx = None
-        unit_price_col_idx = None
-        amount_col_idx = None
-        
-        for idx, row in df_raw.iterrows():
-            row_str = " ".join([str(x) for x in row if pd.notna(x)]).lower()
-            first_cell = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ""
-            
-            if first_cell == "item" and ("sku" in row_str or "quantity" in row_str):
-                header_row = idx
-                for col_idx, val in enumerate(row):
-                    val_str = str(val).strip().lower() if pd.notna(val) else ""
-                    if val_str == "item": item_col_idx = col_idx
-                    elif "sku" in val_str or val_str == "sku#": sku_col_idx = col_idx
-                    elif "quantity" in val_str or "qty" in val_str: qty_col_idx = col_idx
-                    elif "unit" in val_str and "price" in val_str: unit_price_col_idx = col_idx
-                    elif val_str == "amount": amount_col_idx = col_idx
-                break
-        
-        if header_row is not None:
-            skip_keywords = ['shipping', 'shipping cost', 'ground shipping', 'subtotal', 'total', 'tax', 'grand total', 'nan', '', 
-                            'please send', 'payment', 'bank', 'note:', 'payment terms', 
-                            'this document', 'amount:', 'invoice total:', 'discount']
-            
-            for idx in range(header_row + 1, len(df_raw)):
-                row = df_raw.iloc[idx]
-                
-                item_name = ""
-                if item_col_idx is not None and item_col_idx < len(row):
-                    item_name = str(row.iloc[item_col_idx]).strip() if pd.notna(row.iloc[item_col_idx]) else ""
-                
-                if not item_name: continue
-                
-                item_lower = item_name.lower()
-                should_skip = False
-                for keyword in skip_keywords:
-                    if keyword and keyword.lower() in item_lower:
-                        should_skip = True; break
-                if should_skip: continue
-                
-                item_name = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', item_name)
-                item_name = re.sub(r'(\w)x([A-Z])', r'\1 x \2', item_name)
-                item_name = item_name.strip()
-                
-                sku = ""
-                if sku_col_idx is not None and sku_col_idx < len(row):
-                    sku = str(row.iloc[sku_col_idx]).strip() if pd.notna(row.iloc[sku_col_idx]) else ""
-                
-                qty = None
-                if qty_col_idx is not None and qty_col_idx < len(row):
-                    try:
-                        qty_val = row.iloc[qty_col_idx]
-                        if pd.notna(qty_val):
-                            qty = int(float(str(qty_val).replace(",", "")))
-                    except: pass
-                
-                if qty is None or qty <= 0:
-                    for col_idx in range(len(row)):
-                        if col_idx == item_col_idx or col_idx == sku_col_idx: continue
-                        try:
-                            val = row.iloc[col_idx]
-                            if pd.notna(val):
-                                val_str = str(val).strip()
-                                qty_candidate = int(float(val_str.replace(",", "").replace("$", "")))
-                                if 1 <= qty_candidate <= 10000:
-                                    qty = qty_candidate; break
-                        except: continue
-                
-                unit_price = None
-                if unit_price_col_idx is not None and unit_price_col_idx < len(row):
-                    try:
-                        unit_val = row.iloc[unit_price_col_idx]
-                        if pd.notna(unit_val):
-                            unit_str = str(unit_val).replace("$", "").replace(",", "").strip()
-                            unit_price = float(unit_str)
-                    except: pass
-                
-                total_amount = None
-                if amount_col_idx is not None and amount_col_idx < len(row):
-                    try:
-                        amount_val = row.iloc[amount_col_idx]
-                        if pd.notna(amount_val):
-                            amount_str = str(amount_val).replace("$", "").replace(",", "").strip()
-                            total_amount = float(amount_str)
-                    except: pass
-                
-                if unit_price is None and total_amount and qty and qty > 0:
-                    unit_price = total_amount / qty
-                
-                if qty and qty > 0:
-                    matched = None
-                    if sku:
-                        if sku in MASTER["SKU#"].values:
-                            matched = MASTER[MASTER["SKU#"] == sku]["Product name"].iloc[0]
-                        else:
-                            for master_sku in MASTER["SKU#"].values:
-                                if str(master_sku).strip() == str(sku).strip():
-                                    matched = MASTER[MASTER["SKU#"] == master_sku]["Product name"].iloc[0]; break
-                    
-                    if not matched and item_name:
-                        normalized_item = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', item_name)
-                        normalized_item = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_item)
-                        item_lower = normalized_item.lower()
-                        
-                        for product_name in MASTER["Product name"].values:
-                            normalized_product = re.sub(r'(\w)\s*x\s*([A-Z])', r'\1 x \2', str(product_name))
-                            normalized_product = re.sub(r'(\w)x([A-Z])', r'\1 x \2', normalized_product)
-                            prod_lower = normalized_product.lower()
-                            
-                            if prod_lower in item_lower or item_lower in prod_lower:
-                                matched = product_name; break
-                    
-                    if matched:
-                        items[matched] = (qty, invoice_num, unit_price, total_amount, invoice_date, due_date)
-                    else:
-                        items[item_name] = (qty, invoice_num, unit_price, total_amount, invoice_date, due_date)
-    
-    return items
-
 def update_inventory_delta(sku, delta):
-    """Update inventory stock by a delta amount."""
+    """Update inventory stock (stock_left) by a delta amount."""
     try:
         supabase = get_authed_supabase()
         res = supabase.table("inventory").select("stock_left").eq("sku", sku).execute()
@@ -607,6 +236,26 @@ def update_inventory_delta(sku, delta):
     except Exception as e:
         return False, str(e)
 
+def update_stock_bought_delta(sku, delta):
+    """Update inventory stock (stock_bought) by a delta amount."""
+    try:
+        supabase = get_authed_supabase()
+        res = supabase.table("inventory").select("stock_bought").eq("sku", sku).execute()
+        rows = getattr(res, "data", None)
+        if not rows:
+            return False, "Product not found"
+        
+        current_bought = rows[0].get("stock_bought", 0)
+        new_bought = current_bought + delta
+        
+        supabase.table("inventory").update({
+            "stock_bought": new_bought
+        }).eq("sku", sku).execute()
+        st.cache_data.clear() # Clear cache on update
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
 def show_inventory_management():
     """Show inventory management interface with Supabase inventory"""
    
@@ -620,62 +269,24 @@ def show_inventory_management():
     inv_df = load_inventory()
     summary_df = load_inventory_summary()
 
-    with st.expander("🛠️ Admin Tools & Sync"):
-        c1, c2 = st.columns(2)
-        if c1.button("🔄 Sync Products to Inventory", help="Ensure all products in the catalog have a corresponding entry in inventory (sets to 0 if missing)."):
-            try:
-                supabase = get_authed_supabase()
-                supabase.rpc("sync_all_products_to_inventory").execute()
-                st.success("Products synced to inventory.")
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Sync failed: {e}")
-        
-        if c2.button("🖼️ Sync Storage Images", help="Scan storage bucket and update inventory image URLs based on SKU match."):
-            with st.spinner("Syncing images..."):
-                try:
-                    supabase = get_authed_supabase()
-                    bucket_name = "email-product-pictures"
-                    files = supabase.storage.from_(bucket_name).list()
-                    
-                    for file in files:
-                        filename = file.get('name', '')
-                        if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-                            sku = filename.rsplit('.', 1)[0]
-                            public_url = supabase.storage.from_(bucket_name).get_public_url(filename)
-                            
-                            supabase.table("inventory").update({
-                                "image_url": public_url
-                            }).eq("sku", sku).execute()
-                    
-                    st.success("Images synced to inventory.")
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Image sync failed: {e}")
-
-    # Auto-sync happens via database triggers - no manual sync needed
-    st.caption("💡 Products and images sync automatically from the products table")
-
     # Tabs for actions
-    tab_adjust, tab_summary, tab_current = st.tabs([
-        "Quick Adjust (+/-)", 
+    tab_left, tab_bought, tab_summary, tab_current = st.tabs([
+        "Quick Adjust (Left)", 
+        "Quick Adjust (Bought)",
         "Inventory Summary", 
         "Full Inventory Table"
     ])
     
-    # 1. Quick Adjust Tab
-    with tab_adjust:
-        st.subheader("Quick Adjust Inventory")
-        st.caption("Increment or decrement stock levels by any amount.")
+    # 1. Quick Adjust (Left) Tab
+    with tab_left:
+        st.subheader("Quick Adjust Stock Left")
+        st.caption("Increment or decrement 'Stock Left' (remaining inventory).")
         
-        search_query = st.text_input("🔍 Search Product (Name or SKU)", "")
+        search_query = st.text_input("🔍 Search Product (Name or SKU)", "", key="search_left")
         
         if inv_df.empty:
             st.info("No inventory to adjust.")
         else:
-            # Prepare display dataframe
             df_display = inv_df.copy()
             if search_query:
                 mask = (
@@ -684,21 +295,18 @@ def show_inventory_management():
                 )
                 df_display = df_display[mask]
             
-            # Sort by name
             if "item_name" in df_display.columns:
                 df_display = df_display.sort_values("item_name")
             
-            # Display rows
             st.markdown("---")
             h1, h2, h3 = st.columns([3, 1, 2])
             h1.markdown("**Product**")
             h2.markdown("**Left**")
-            h3.markdown("**Adjust Amount**")
+            h3.markdown("**Adjust Left**")
             
-            # Limit display
             MAX_ITEMS = 60
             if len(df_display) > MAX_ITEMS and not search_query:
-                st.warning(f"Showing first {MAX_ITEMS} items. Use search to find specific products.")
+                st.warning(f"Showing first {MAX_ITEMS} items.")
                 df_display = df_display.head(MAX_ITEMS)
                 
             for idx, row in df_display.iterrows():
@@ -710,45 +318,93 @@ def show_inventory_management():
                     c1, c2, c3 = st.columns([3, 1, 2])
                     c1.write(f"**{name}**\n`{sku}`")
                     c2.write(f"**{stock}**")
-                    
-                    # Dynamic adjustment
                     with c3:
                         adj_c1, adj_c2, adj_c3 = st.columns([2, 1, 1])
-                        amount = adj_c1.number_input("Amount", min_value=1, step=1, value=1, key=f"amt_{sku}", label_visibility="collapsed")
-                        
-                        if adj_c2.button("➖", key=f"dec_{sku}", help=f"Decrease by {amount}"):
+                        amount = adj_c1.number_input("Amount", min_value=1, step=1, value=1, key=f"amt_l_{sku}", label_visibility="collapsed")
+                        if adj_c2.button("➖", key=f"dec_l_{sku}"):
                             success, msg = update_inventory_delta(sku, -amount)
                             if success: st.rerun()
                             else: st.error(msg)
-                            
-                        if adj_c3.button("➕", key=f"inc_{sku}", help=f"Increase by {amount}"):
+                        if adj_c3.button("➕", key=f"inc_l_{sku}"):
                             success, msg = update_inventory_delta(sku, amount)
                             if success: st.rerun()
                             else: st.error(msg)
-                        
                     st.markdown("---")
 
-    # 2. Inventory Summary Tab
+    # 2. Quick Adjust (Bought) Tab
+    with tab_bought:
+        st.subheader("Quick Adjust Stock Bought")
+        st.caption("Increment or decrement 'Stock Bought' (total purchased inventory).")
+        
+        search_query_b = st.text_input("🔍 Search Product (Name or SKU)", "", key="search_bought")
+        
+        if inv_df.empty:
+            st.info("No inventory to adjust.")
+        else:
+            df_display = inv_df.copy()
+            if search_query_b:
+                mask = (
+                    df_display["item_name"].astype(str).str.contains(search_query_b, case=False, na=False) | 
+                    df_display["sku"].astype(str).str.contains(search_query_b, case=False, na=False)
+                )
+                df_display = df_display[mask]
+            
+            if "item_name" in df_display.columns:
+                df_display = df_display.sort_values("item_name")
+            
+            st.markdown("---")
+            h1, h2, h3 = st.columns([3, 1, 2])
+            h1.markdown("**Product**")
+            h2.markdown("**Bought**")
+            h3.markdown("**Adjust Bought**")
+            
+            MAX_ITEMS = 60
+            if len(df_display) > MAX_ITEMS and not search_query_b:
+                st.warning(f"Showing first {MAX_ITEMS} items.")
+                df_display = df_display.head(MAX_ITEMS)
+                
+            for idx, row in df_display.iterrows():
+                sku = str(row.get("sku", ""))
+                name = row.get("item_name", "Unknown")
+                stock = int(float(str(row.get("stock_bought", 0)).replace(",", "") or 0))
+                
+                with st.container():
+                    c1, c2, c3 = st.columns([3, 1, 2])
+                    c1.write(f"**{name}**\n`{sku}`")
+                    c2.write(f"**{stock}**")
+                    with c3:
+                        adj_c1, adj_c2, adj_c3 = st.columns([2, 1, 1])
+                        amount = adj_c1.number_input("Amount", min_value=1, step=1, value=1, key=f"amt_b_{sku}", label_visibility="collapsed")
+                        if adj_c2.button("➖", key=f"dec_b_{sku}"):
+                            success, msg = update_stock_bought_delta(sku, -amount)
+                            if success: st.rerun()
+                            else: st.error(msg)
+                        if adj_c3.button("➕", key=f"inc_b_{sku}"):
+                            success, msg = update_stock_bought_delta(sku, amount)
+                            if success: st.rerun()
+                            else: st.error(msg)
+                    st.markdown("---")
+
+    # 3. Inventory Summary Tab
     with tab_summary:
         st.subheader("Inventory Summary")
         if not summary_df.empty:
-            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+            st.dataframe(summary_df, width='stretch', hide_index=True)
         else:
             st.info("No summary data available.")
 
-    # 3. Full Inventory Table
+    # 4. Full Inventory Table
     with tab_current:
         st.subheader("Current Inventory Table")
-        # Check for missing images
         if not inv_df.empty and "image_url" in inv_df.columns:
             missing_images = inv_df[(inv_df["image_url"] == "N/A") | (inv_df["image_url"].isna())]
             if not missing_images.empty:
-                st.warning(f"⚠️ {len(missing_images)} products missing images. Upload images in Product Management → Images tab.")
+                st.warning(f"⚠️ {len(missing_images)} products missing images.")
                 with st.expander("View products missing images"):
-                    st.dataframe(missing_images[["sku", "item_name", "image_url"]], use_container_width=True, hide_index=True)
+                    st.dataframe(missing_images[["sku", "item_name", "image_url"]], width='stretch', hide_index=True)
         
         if inv_df.empty:
-            st.warning("Inventory table is empty. Add products to get started.")
+            st.warning("Inventory table is empty.")
         else:
             inv_df = inv_df.copy()
             for col in ["stock_bought", "stock_left"]:
@@ -759,7 +415,7 @@ def show_inventory_management():
             edited_inventory = st.data_editor(
                 inv_df,
                 num_rows="dynamic",
-                use_container_width=True,
+                width='stretch',
                 disabled=disabled_cols,
                 key="inventory_editor",
             )
@@ -788,7 +444,7 @@ def show_inventory_management():
                 try:
                     if payload_rows:
                         supabase.table("inventory").upsert(payload_rows, on_conflict="sku").execute()
-                    st.cache_data.clear() # Clear cache on bulk save
+                    st.cache_data.clear()
                     st.success("Inventory updated.")
                     st.rerun()
                 except Exception as e:

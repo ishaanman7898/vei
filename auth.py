@@ -47,7 +47,7 @@ def check_authentication():
         [data-testid="stVerticalBlock"] > div:has(div.stForm) {
             background: rgba(17, 17, 17, 0.8);
             backdrop-filter: blur(10px);
-            padding: 3rem 2rem;
+            padding: 2rem;
             border-radius: 20px;
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
@@ -66,6 +66,7 @@ def check_authentication():
             display: flex;
             justify-content: center;
             align-items: center;
+            margin-bottom: 1rem;
         }
         
         /* Additional centering for logo container */
@@ -75,25 +76,35 @@ def check_authentication():
             align-items: center;
             width: 100%;
         }
+        
+        /* Center the form content */
+        [data-testid="stForm"] {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        /* Force full width for inputs in the centered form */
+        [data-testid="stForm"] > div {
+            width: 100%;
+        }
     </style>
     """, unsafe_allow_html=True)
     
     # Adaptive centering
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1.5, 1])
     
     with col2:
-        # Logo Section
-        st.image("Thrive.png", width=180)
-        st.markdown('<div style="height: 20px;"></div>', unsafe_allow_html=True)
-
-        # Input Section
+        # Logo and Form Section together in one block for better centering
         with st.form("login_form"):
+            st.image("Thrive.png", width=180)
+            
             email = st.text_input("Employee ID / Email", placeholder="ex: j.doe@company.com", key="login_email", label_visibility="visible")
             password = st.text_input("Password", type="password", placeholder="••••••••", key="login_password", label_visibility="visible")
 
             st.markdown("######") # Adds a little spacer
 
-            submit = st.form_submit_button("Sign In", use_container_width=True)
+            submit = st.form_submit_button("Sign In", width='stretch')
             
             if submit:
                 if not email or not password:
@@ -119,7 +130,7 @@ def check_authentication():
         # Footer Links
         st.markdown("""
             <div style="text-align: center; margin-top: 20px; font-size: 10px; color: #555555;">
-                v2.4.1
+                v2.5.0
             </div>
         """, unsafe_allow_html=True)
     
