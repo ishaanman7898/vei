@@ -52,7 +52,7 @@ def _base_wrapper(content_rows: str) -> str:
             <a href="mailto:thrivewellness.il@veinternational.org" style="color:{_ACCENT};text-decoration:none;">thrivewellness.il@veinternational.org</a>.
           </p>
           <p style="margin:0;font-size:12px;color:{_TEXT_MUTED};">
-            &copy; 2025 Thrive &nbsp;·&nbsp; <a href="https://thrive-ve.com" style="color:{_TEXT_MUTED};text-decoration:none;">thrive-ve.com</a>
+            &copy; 2026 Thrive Wellness &nbsp;·&nbsp; <a href="https://thrive-ve.com" style="color:{_TEXT_MUTED};text-decoration:none;">thrive-ve.com</a>
           </p>
         </td>
       </tr>
@@ -97,10 +97,10 @@ def get_fulfillment_email_html(first_name: str, order_number: str, items_rows: s
       <tr>
         <td style="padding:36px 40px 0 40px;">
           <p style="margin:0 0 8px 0;font-size:22px;font-weight:600;color:{_TEXT_DARK};">
-            Hi {first_name}, your order is on its way!
+            Hi {first_name}, your order is here!
           </p>
           <p style="margin:0;font-size:15px;color:{_TEXT_BODY};line-height:1.6;">
-            Thanks for your order — we really appreciate your support.
+            Thanks for your order, and we really appreciate your support.
             Here's a summary of what you got, and photos of each item are attached below.
           </p>
         </td>
