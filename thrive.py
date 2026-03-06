@@ -7,6 +7,7 @@ import hashlib
 from auth import check_authentication, get_current_user, check_permission
 from inventory_management import show_inventory_management
 from email_sender import show_email_sender
+from product_merger import show_product_merger
 
 # Page config
 st.set_page_config(
@@ -123,7 +124,8 @@ with st.sidebar:
         menu_options.append("Inventory")
     if check_permission("email_sender"):
         menu_options.append("Email Sender")
-    
+    menu_options.append("Product Merger")
+
     if len(menu_options) <= 0:
         st.error("No module access. Contact admin.")
         st.stop()
@@ -155,4 +157,7 @@ elif tool == "Email Sender":
         show_email_sender()
     else:
         st.error("Access Denied")
+
+elif tool == "Product Merger":
+    show_product_merger()
 
