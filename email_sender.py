@@ -125,72 +125,6 @@ def subtract_inventory_from_order_supabase(cart, sku_to_name):
     except Exception as e:
         return False, f"Supabase error: {str(e)}", []
 
-def show_product_merger():
-    """Robust tool to merge Orders and Items CSV files"""
-    st.subheader("Product Merger")
-    st.caption("Merge Orders CSV and Items CSV into a consolidated format.")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        orders_file = st.file_uploader("Upload Orders CSV", type=["csv"], key="merger_orders")
-    with c2:
-        items_file = st.file_uploader("Upload Items CSV", type=["csv"], key="merger_items")
-        
-    if orders_file and items_file:
-        if st.button("Merge Files", type="primary"):
-            try:
-                df_orders = pd.read_csv(orders_file)
-                df_items = pd.read_csv(items_file)
-                df_orders.columns = df_orders.columns.str.strip()
-                df_items.columns = df_items.columns.str.strip()
-                
-                # Robust Column detection
-                t_order_col = next((c for c in df_orders.columns if "transaction" in c.lower()), None)
-                t_item_col = next((c for c in df_items.columns if "transaction" in c.lower()), None)
-                
-                if not t_order_col or not t_item_col:
-                    st.error(f"Missing transaction column. Found: Orders({t_order_col}), Items({t_item_col})")
-                    return
-                    
-                if "Quantity" in df_items.columns:
-                    df_items["Quantity"] = pd.to_numeric(df_items["Quantity"], errors='coerce').fillna(1).astype(int)
-                else:
-                    df_items["Quantity"] = 1
-                
-                name_col = next((c for c in df_items.columns if "item name" in c.lower() or "product name" in c.lower()), "Item name")
-                df_items["Formatted_Item"] = df_items.apply(
-                    lambda x: (f"{x[name_col]}" if x['Quantity'] == 1 else f"{x[name_col]} x {x['Quantity']}") if pd.notna(x.get(name_col)) else "", axis=1
-                )
-                
-                items_agg = df_items.groupby(t_item_col)["Formatted_Item"].apply(lambda x: "  ".join(filter(None, x))).reset_index()
-                items_agg.rename(columns={t_item_col: "TransactionID", "Formatted_Item": "Product(s) Ordered & Quantity"}, inplace=True)
-                
-                df_orders["TransactionID"] = df_orders[t_order_col].astype(str)
-                items_agg["TransactionID"] = items_agg["TransactionID"].astype(str)
-                
-                merged_df = pd.merge(df_orders, items_agg, on="TransactionID", how="left")
-                
-                final_df = pd.DataFrame()
-                final_df["Web or Booth"] = "Website"
-                final_df["Transaction No."] = merged_df[t_order_col]
-                final_df["Purchase Date"] = merged_df.get("Date", "N/A")
-                final_df["Customer Name"] = merged_df.get("Billing name", "N/A")
-                final_df["Company"] = merged_df.get("Billing company", "N/A")
-                final_df["City"] = merged_df.get("Billing city", "N/A")
-                final_df["State"] = merged_df.get("Billing state/province", "N/A")
-                final_df["Customer E-Mail"] = next((merged_df[c] for c in merged_df.columns if "email" in c.lower()), "N/A")
-                final_df["Product(s) Ordered & Quantity"] = merged_df.get("Product(s) Ordered & Quantity", "N/A")
-                final_df["Order Total"] = next((merged_df[c] for c in merged_df.columns if "total" in c.lower() and "sub" not in c.lower()), "0")
-                
-                final_df = final_df.fillna("N/A")
-                st.success("✅ Files merged successfully!")
-                st.dataframe(final_df, width='stretch')
-                
-                csv = final_df.to_csv(index=False).encode('utf-8')
-                st.download_button(label="Download Merged CSV", data=csv, file_name="merged_products.csv", mime="text/csv", type="primary")
-            except Exception as e:
-                st.error(f"Error merging files: {str(e)}")
-
 def parse_product_string(prods, name_to_sku, MASTER):
     """Extremely robust regex parser for products and quantities"""
     cart = {}
@@ -239,86 +173,81 @@ def show_email_sender():
         return
     
     if "orders" not in st.session_state: st.session_state.orders = []
-    
-    tab_entry, tab_merger = st.tabs(["Order Entry", "Product Merger"])
 
-    with tab_entry:
-        st.subheader("Manual & CSV Entry")
-        st.caption("Paste data directly into the table. Use the CSV uploader to bulk-fill the table.")
-        
-        entry_key = "order_entry_data"
-        if entry_key not in st.session_state:
+    st.subheader("Manual & CSV Entry")
+    st.caption("Paste data directly into the table. Use the CSV uploader to bulk-fill the table.")
+
+    entry_key = "order_entry_data"
+    if entry_key not in st.session_state:
+        st.session_state[entry_key] = pd.DataFrame({
+            "First Name": [""] * 10, "Email": [""] * 10, "Order #": [""] * 10,
+            "Order Total": [""] * 10, "Products": [""] * 10
+        })
+
+    with st.expander("📂 Import from CSV"):
+        uploaded_csv = st.file_uploader("Upload CSV", type=["csv"], key="entry_csv")
+        if uploaded_csv and st.button("Apply CSV Data to Table"):
+            try:
+                df_csv = pd.read_csv(uploaded_csv)
+                df_csv.columns = df_csv.columns.str.strip()
+                email_col = next((c for c in df_csv.columns if "email" in c.lower()), None)
+                name_col = next((c for c in df_csv.columns if "name" in c.lower()), None)
+                order_col = next((c for c in df_csv.columns if "order" in c.lower() and "#" in c.lower() or "transaction" in c.lower()), None)
+                prod_col = next((c for c in df_csv.columns if "product" in c.lower()), None)
+                total_col = next((c for c in df_csv.columns if "total" in c.lower()), None)
+
+                new_rows = []
+                for _, row in df_csv.iterrows():
+                    fname = str(row.get(name_col, "")).split()[0] if name_col and pd.notna(row.get(name_col)) else ""
+                    new_rows.append({
+                        "First Name": fname, "Email": str(row.get(email_col, "")),
+                        "Order #": str(row.get(order_col, "")), "Order Total": str(row.get(total_col, "0")),
+                        "Products": str(row.get(prod_col, ""))
+                    })
+                st.session_state[entry_key] = pd.DataFrame(new_rows)
+                st.success("CSV applied. You can now edit the table below.")
+                st.rerun()
+            except Exception as e: st.error(f"Error: {e}")
+
+    # The table is the source of truth
+    edited_df = st.data_editor(st.session_state[entry_key], num_rows="dynamic", width='stretch', key="entry_editor")
+
+    st.markdown("---")
+
+    # Center the subtract inventory checkbox
+    _, center_col, _ = st.columns([1, 1, 1])
+    with center_col:
+        subtract_inv = st.checkbox("Subtract from Inventory?", value=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Clear Table", width='stretch'):
             st.session_state[entry_key] = pd.DataFrame({
                 "First Name": [""] * 10, "Email": [""] * 10, "Order #": [""] * 10,
                 "Order Total": [""] * 10, "Products": [""] * 10
             })
-            
-        with st.expander("📂 Import from CSV"):
-            uploaded_csv = st.file_uploader("Upload CSV", type=["csv"], key="entry_csv")
-            if uploaded_csv and st.button("Apply CSV Data to Table"):
-                try:
-                    df_csv = pd.read_csv(uploaded_csv)
-                    df_csv.columns = df_csv.columns.str.strip()
-                    email_col = next((c for c in df_csv.columns if "email" in c.lower()), None)
-                    name_col = next((c for c in df_csv.columns if "name" in c.lower()), None)
-                    order_col = next((c for c in df_csv.columns if "order" in c.lower() and "#" in c.lower() or "transaction" in c.lower()), None)
-                    prod_col = next((c for c in df_csv.columns if "product" in c.lower()), None)
-                    total_col = next((c for c in df_csv.columns if "total" in c.lower()), None)
-                    
-                    new_rows = []
-                    for _, row in df_csv.iterrows():
-                        fname = str(row.get(name_col, "")).split()[0] if name_col and pd.notna(row.get(name_col)) else ""
-                        new_rows.append({
-                            "First Name": fname, "Email": str(row.get(email_col, "")),
-                            "Order #": str(row.get(order_col, "")), "Order Total": str(row.get(total_col, "0")),
-                            "Products": str(row.get(prod_col, ""))
-                        })
-                    st.session_state[entry_key] = pd.DataFrame(new_rows)
-                    st.success("CSV applied. You can now edit the table below.")
-                    st.rerun()
-                except Exception as e: st.error(f"Error: {e}")
-
-        # The table is the source of truth
-        edited_df = st.data_editor(st.session_state[entry_key], num_rows="dynamic", width='stretch', key="entry_editor")
-        
-        st.markdown("---")
-        
-        # Center the subtract inventory checkbox
-        _, center_col, _ = st.columns([1, 1, 1])
-        with center_col:
-            subtract_inv = st.checkbox("Subtract from Inventory?", value=True)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🗑️ Clear Table", width='stretch'):
-                st.session_state[entry_key] = pd.DataFrame({
-                    "First Name": [""] * 10, "Email": [""] * 10, "Order #": [""] * 10,
-                    "Order Total": [""] * 10, "Products": [""] * 10
-                })
-                st.rerun()
-        with col2:
-            if st.button("➕ Add All to Queue", type="primary", width='stretch'):
-                # Save changes before processing
-                st.session_state[entry_key] = edited_df
-                added = 0
-                for _, row in edited_df.iterrows():
-                    fname, email = str(row.get("First Name", "")).strip(), str(row.get("Email", "")).strip()
-                    if not fname or not email or fname=="nan": continue
-                    onum = str(row.get("Order #", "")).strip()
-                    ototal_str = str(row.get("Order Total", "0")).strip()
-                    try: ototal = float(ototal_str.replace("$", "").replace(",", ""))
-                    except: ototal = 0.0
-                    cart = parse_product_string(row.get("Products", ""), name_to_sku, MASTER)
-                    if cart:
-                        st.session_state.orders.append({
-                            "First_Name": fname, "Email": email, "Order_Number": onum,
-                            "Order_Total": ototal, "Cart": cart, "type": "fulfillment",
-                            "subtract_inventory": subtract_inv
-                        })
-                        added += 1
-                if added: st.success(f"✅ Added {added} orders!"); st.rerun()
-
-    with tab_merger: show_product_merger()
+            st.rerun()
+    with col2:
+        if st.button("➕ Add All to Queue", type="primary", width='stretch'):
+            # Save changes before processing
+            st.session_state[entry_key] = edited_df
+            added = 0
+            for _, row in edited_df.iterrows():
+                fname, email = str(row.get("First Name", "")).strip(), str(row.get("Email", "")).strip()
+                if not fname or not email or fname=="nan": continue
+                onum = str(row.get("Order #", "")).strip()
+                ototal_str = str(row.get("Order Total", "0")).strip()
+                try: ototal = float(ototal_str.replace("$", "").replace(",", ""))
+                except: ototal = 0.0
+                cart = parse_product_string(row.get("Products", ""), name_to_sku, MASTER)
+                if cart:
+                    st.session_state.orders.append({
+                        "First_Name": fname, "Email": email, "Order_Number": onum,
+                        "Order_Total": ototal, "Cart": cart, "type": "fulfillment",
+                        "subtract_inventory": subtract_inv
+                    })
+                    added += 1
+            if added: st.success(f"✅ Added {added} orders!"); st.rerun()
 
     if st.session_state.orders:
         st.markdown("---")
